@@ -1,0 +1,8 @@
+version: 2.1
+
+description: |
+  Simplifies installation and use of Kubescape within CircleCI, used to scan Kubernetes resources for security issues.
+
+display:
+  home_url: "https://github.com/juburr/kubescape-orb"
+  source_url: "https://github.com/juburr/kubescape-orb"
