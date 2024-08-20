@@ -4,7 +4,7 @@ description: >
 usage:
   version: 2.1
   orbs:
-    kubescape: juburr/kubescape-orb@1.0.0
+    kubescape: juburr/kubescape-orb@0.0.3
   jobs:
     build-images:
       docker:
