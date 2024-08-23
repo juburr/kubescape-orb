@@ -1,0 +1,28 @@
+description: >
+  Scans a helm chart using one or more frameworks for compliance to security controls.
+parameters:
+  chart_path:
+    type: string
+    description: "Helm chart to scan."
+  framework:
+    type: enum
+    enum: ["all", "armobest", "devopsbest", "mitre", "nsa", "soc2", "cis-aks-t1.2.0", "cis-eks-t1.2.0", "cis-v1.23-t1.0.1"]
+    default: all
+    description: "Framework to scan the chart with."
+  output_file:
+    type: string
+    description: "Path to the output file."
+  output_format:
+    type: enum
+    enum: ["pretty-printer", "json", "junit", "prometheus", "pdf", "html", "sarif"]
+    default: json
+    description: "Format to use for the output file."
+steps:
+  - run:
+      environment:
+        PARAM_CHART_PATH: << parameters.chart_path >>
+        PARAM_FRAMEWORK: << parameters.framework >>
+        PARAM_OUTPUT_FILE: << parameters.output_file >>
+        PARAM_OUTPUT_FORMAT: << parameters.output_format >>
+      name: Scan Helm Chart
+      command: <<include(scripts/helm_scan_framework.sh)>>

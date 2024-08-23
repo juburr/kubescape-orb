@@ -8,6 +8,8 @@
 
 This is an unofficial orb used to install Kubescape in your CircleCI pipeline and scan for security issues in Kubernetes. Contributions are welcome!
 
+Scan Kubernetes YAML files and Helm charts in your CI pipeline using frameworks such as NSA, MITRE, SOC2, CIS, and more!
+
 ## Features
 ### **Secure By Design**
 - **Least Privilege**: Installs to a user-owned directory by default, with no `sudo` usage anywhere in this orb.
@@ -19,3 +21,30 @@ This is an unofficial orb used to install Kubescape in your CircleCI pipeline an
 Info for security teams:
 - Required external access to allow, if running a locked down, self-hosted CircleCI pipeline on-prem:
   - `github.com`: For download and installation of the Kubescape tool.
+
+## Example Usage
+
+The following example assumes a Helm chart was built in a previous job, and saved to the workspace.
+
+This example uses the NSA framework for demonstration purposes, but many organizations will elect to use "all" (the default, if not supplied).
+
+```yaml
+  version: 2.1
+
+  orbs:
+    kubescape: juburr/kubescape-orb@0.1.0
+
+  jobs:
+    helm_scan:
+      docker:
+        - image: cimg/base:current-22.04
+      steps:
+        - attach_workspace:
+            at: /home/circleci/project/helm_charts
+        - kubescape/install
+        - kubescape/helm_scan_framework:
+            chart_path: /home/circleci/project/helm_charts/myservice-1.0.0.tgz
+            framework: nsa
+            output_file: myservice_nsa_scan.json
+            output_format: json
+```

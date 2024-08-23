@@ -3,14 +3,24 @@ description: >
 
 usage:
   version: 2.1
+
   orbs:
     kubescape: juburr/kubescape-orb@0.0.3
+
   jobs:
     build-images:
       docker:
-        - image: cimg/base:stable
+        - image: cimg/base:current-22.04
       steps:
+        - attach_workspace:
+            at: /home/circleci/project/helm_charts
         - kubescape/install
+        - kubescape/helm_scan_framework:
+            chart_path: /home/circleci/project/helm_charts/myservice-1.0.0.tgz
+            framework: nsa
+            output_file: myservice_nsa_scan.json
+            output_format: json
+
   workflows:
     use-my-orb:
       jobs:
