@@ -9,6 +9,10 @@ parameters:
     enum: ["all", "armobest", "devopsbest", "mitre", "nsa", "soc2", "cis-aks-t1.2.0", "cis-eks-t1.2.0", "cis-v1.23-t1.0.1"]
     default: all
     description: "Framework to scan the chart with."
+  namespace:
+    type: string
+    default: kubescape-orb
+    description: "Namespace to use when generating YAML files from Helm chart."
   output_file:
     type: string
     description: "Path to the output file."
@@ -22,6 +26,7 @@ steps:
       environment:
         PARAM_CHART_PATH: << parameters.chart_path >>
         PARAM_FRAMEWORK: << parameters.framework >>
+        PARAM_NAMESPACE: << parameters.namespace >>
         PARAM_OUTPUT_FILE: << parameters.output_file >>
         PARAM_OUTPUT_FORMAT: << parameters.output_format >>
       name: Scan Helm Chart

@@ -6,6 +6,7 @@ set +o history
 # Prepare orb parameters
 CHART_PATH=$(circleci env subst "${PARAM_CHART_PATH}")
 FRAMEWORK="${PARAM_FRAMEWORK}"
+NAMESPACE=$(circleci env subst "${PARAM_NAMESPACE}")
 OUTPUT_FILE=$(circleci env subst "${PARAM_OUTPUT_FILE}")
 OUTPUT_FORMAT="${PARAM_OUTPUT_FORMAT}"
 YAML_DIR="${HOME}/.local/share/kubescape-orb/yamls"
@@ -22,7 +23,7 @@ echo "  YAML_DIR: ${YAML_DIR}"
 # Helm chart (.tar.gz file) at this point. Run the template command to
 # transform it into a signle YAML file.
 mkdir -p "${YAML_DIR}"
-helm template "${CHART_PATH}" -n kubescape-orb > "${YAML_DIR}/chart.yaml"
+helm template "${CHART_PATH}" -n "${NAMESPACE}" > "${YAML_DIR}/chart.yaml"
 
 # Scan the YAML file using Kubescape
 kubescape scan framework "${FRAMEWORK}" \
