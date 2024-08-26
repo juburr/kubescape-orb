@@ -21,6 +21,9 @@ parameters:
     enum: ["pretty-printer", "json", "junit", "prometheus", "pdf", "html", "sarif"]
     default: json
     description: "Format to use for the output file."
+  verbose:
+    type: boolean
+    default: true
 steps:
   - run:
       environment:
@@ -29,5 +32,6 @@ steps:
         PARAM_NAMESPACE: << parameters.namespace >>
         PARAM_OUTPUT_FILE: << parameters.output_file >>
         PARAM_OUTPUT_FORMAT: << parameters.output_format >>
+        PARAM_VERBOSE: << parameters.verbose >>
       name: Scan Helm Chart
       command: <<include(scripts/helm_scan_framework.sh)>>
