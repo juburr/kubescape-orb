@@ -14,7 +14,7 @@ parameters:
     description: Option to perform SHA-512 checksum verification on the downloaded Kubescape executable.
   version:
     type: string
-    default: "3.0.15"
+    default: "3.0.16"
     description: Specify the semver of the Kubescape version to install.
 steps:
   - when:

@@ -16,6 +16,7 @@ echo "  VERSION: ${VERSION}"
 # Lookup table of sha512 checksums for different versions of kubescape-ubuntu-latest
 declare -A sha512sums
 sha512sums=(
+    ["3.0.16"]="a59b60d1cca7aa3dafca728b5d98dcb01b9e790f619c5397e7ec7027e915bbcdea2593942beb7f4dfe816a0bfeb74dff02b0ebc8640a75cf7556cc8e02623e8c"
     ["3.0.15"]="d263406c7d9bcfd726a3310f38dc33970a15e8863af60d0b2d01ee0d02e834436dd677cdd25ff3e045bd4ffb09f554f2bdba10b9be91f7a903ea7b80513eba0c"
     ["3.0.14"]="d373c09d74be061581493919cf08f170932d8da14018b19381c73af2c9d8bbee64b150f65d7937da961674fc5581e64dad3f0b6ce2df11c408cd282ee375ff14"
     ["3.0.13"]="1a9314ca7bb581750ae6182798532f2d0f2a16cbf5e5809f760cfc0d23d2a7106370c1cedd546cd69f6470966ffa7205e8adc55c077a05d3a935bd57dc0b0d90"
