@@ -32,7 +32,7 @@ This example uses the NSA framework for demonstration purposes, but many organiz
   version: 2.1
 
   orbs:
-    kubescape: juburr/kubescape-orb@0.1.0
+    kubescape: juburr/kubescape-orb@0.3.1
 
   jobs:
     helm_scan:

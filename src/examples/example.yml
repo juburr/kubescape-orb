@@ -5,7 +5,7 @@ usage:
   version: 2.1
 
   orbs:
-    kubescape: juburr/kubescape-orb@0.0.3
+    kubescape: juburr/kubescape-orb@0.3.1
 
   jobs:
     build-images:
