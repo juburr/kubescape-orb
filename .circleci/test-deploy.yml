@@ -24,13 +24,14 @@ jobs:
   # You may want to add additional validation steps to ensure the commands are working as expected.
   command-test:
     docker:
-      - image: cimg/base:current
+      - image: cimg/base:current-22.04
     steps:
       - checkout
       - kubescape-orb/install
       - run:
           name: Verify Install
           command: command -v kubescape
+
 workflows:
   test-deploy:
     jobs:
