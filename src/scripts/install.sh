@@ -80,7 +80,14 @@ fi
 
 # If there was no cache hit, go ahead and re-download the binary.
 if [[ ! -f kubescape ]]; then
-    wget "https://github.com/kubescape/kubescape/releases/download/v${VERSION}/kubescape-ubuntu-latest" -O kubescape
+    if command -v wget &> /dev/null; then
+        wget "https://github.com/kubescape/kubescape/releases/download/v${VERSION}/kubescape-ubuntu-latest" -O kubescape
+    elif command -v curl &> /dev/null; then
+        curl -L "https://github.com/kubescape/kubescape/releases/download/v${VERSION}/kubescape-ubuntu-latest" -o kubescape
+    else
+        echo "ERROR: Neither wget nor curl is available. Please install one of them."
+        exit 1
+    fi
     tar cvzf kubescape.tar.gz kubescape
 fi
 
