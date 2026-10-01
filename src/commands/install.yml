@@ -3,6 +3,7 @@ parameters:
   caching:
     type: boolean
     default: true
+    description: Cache the downloaded Kubescape binary between jobs using the selected version as the cache key.
   install_path:
     type: string
     default: "/home/circleci/bin"

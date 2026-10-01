@@ -29,7 +29,7 @@ parameters:
     description: >
       Framework to scan the chart with. Names match `kubescape list frameworks`.
       Older CIS identifiers (cis-eks-t1.2.0, cis-v1.23-t1.0.1) remain for
-      pipelines that pin Kubescape 3.x; they are not present in 4.0.15.
+      pipelines that pin Kubescape 3.x; they are not present in 4.x.
   namespace:
     type: string
     default: kubescape-orb
@@ -52,15 +52,17 @@ parameters:
       - "yaml"
       - "csv"
       - "markdown"
-      - "cyclonedx-json"
-      - "spdx-json"
       - "policyreport"
       - "exceptions"
     default: json
-    description: "Format to use for the output file. Matches kubescape --format."
+    description: >
+      Format to use for the output file. Matches kubescape --format for
+      posture scans. Image-scan-only formats (cyclonedx-json, spdx-json)
+      are omitted because this command does not scan container images.
   verbose:
     type: boolean
     default: true
+    description: "Display all scanned resources, not only failed ones."
 steps:
   - run:
       environment:

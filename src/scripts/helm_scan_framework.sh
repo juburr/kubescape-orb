@@ -29,7 +29,7 @@ fi
 
 # Kubescape takes Kubernetes YAML files as input, but we just have a
 # Helm chart (.tar.gz file) at this point. Run the template command to
-# transform it into a signle YAML file.
+# transform it into a single YAML file.
 mkdir -p "${YAML_DIR}"
 helm template "${CHART_PATH}" -n "${NAMESPACE}" > "${YAML_DIR}/chart.yaml"
 

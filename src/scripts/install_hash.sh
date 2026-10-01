@@ -18,6 +18,7 @@ do
 done
 
 # Validate input arguments
+VERSION="${VERSION#v}"
 if [[ -z "${VERSION}" ]]; then
   echo "Must specify a version number."
   echo "Usage: $0 -v 1.0.0"

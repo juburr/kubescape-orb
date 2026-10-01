@@ -6,6 +6,12 @@ set -e
 INSTALL_PATH=$(circleci env subst "${PARAM_INSTALL_PATH}")
 VERIFY_CHECKSUMS="${PARAM_VERIFY_CHECKSUMS}"
 VERSION=$(circleci env subst "${PARAM_VERSION}")
+VERSION="${VERSION#v}"
+
+if [[ -z "${VERSION}" ]]; then
+    echo "ERROR: A Kubescape version must be specified."
+    exit 1
+fi
 
 # Print command arguments for debugging purposes.
 echo "Running Kubescape installer..."
@@ -95,7 +101,7 @@ sha512sums=(
     ["3.0.0"]="89b4cfea8a545725828644aed8381b7e85eb38e63a8bf63c855101fd34cfc397be08c875b8dbb8a8c7e8c02041231a4b330691cff52b64f7de11ecc6af1d9a6d"
 )
 
-# Verfies that the SHA-512 checksum of a file matches what was in the lookup table
+# Verifies that the SHA-512 checksum of a file matches what was in the lookup table
 verify_checksum() {
     local file=$1
     local expected_checksum=$2
@@ -128,15 +134,19 @@ if [[ ! -f kubescape ]]; then
     if command -v wget &> /dev/null; then
         wget "${DOWNLOAD_URL}" -O kubescape
     elif command -v curl &> /dev/null; then
-        curl -L "${DOWNLOAD_URL}" -o kubescape
+        curl -fL "${DOWNLOAD_URL}" -o kubescape
     else
         echo "ERROR: Neither wget nor curl is available. Please install one of them."
+        exit 1
+    fi
+    if [[ ! -s kubescape ]]; then
+        echo "ERROR: Downloaded Kubescape binary is empty. Check the version and asset URL."
         exit 1
     fi
     tar cvzf kubescape.tar.gz kubescape
 fi
 
-# An kubescape binary should exist at this point, regardless of whether it was obtained
+# A kubescape binary should exist at this point, regardless of whether it was obtained
 # through cache or re-downloaded. First verify its integrity.
 if [[ "${VERIFY_CHECKSUMS}" != "false" ]]; then
     EXPECTED_CHECKSUM=${sha512sums[${VERSION}]}
@@ -167,5 +177,6 @@ fi
 # directory and marking it as executable. If your pipeline throws an error
 # here, you may want to choose an INSTALL_PATH that doesn't require sudo access,
 # so this orb can avoid any root actions.
+mkdir -p "${INSTALL_PATH}"
 mv kubescape "${INSTALL_PATH}/kubescape"
 chmod +x "${INSTALL_PATH}/kubescape"
