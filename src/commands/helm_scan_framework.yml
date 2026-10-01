@@ -6,9 +6,30 @@ parameters:
     description: "Helm chart to scan."
   framework:
     type: enum
-    enum: ["all", "armobest", "devopsbest", "mitre", "nsa", "soc2", "cis-aks-t1.2.0", "cis-eks-t1.2.0", "cis-v1.23-t1.0.1"]
+    enum:
+      - "all"
+      - "allcontrols"
+      - "agentruntimehardening"
+      - "armobest"
+      - "devopsbest"
+      - "mitre"
+      - "nsa"
+      - "security"
+      - "soc2"
+      - "cis-aks-t1.2.0"
+      - "cis-aks-t1.8.0"
+      - "cis-eks-t1.2.0"
+      - "cis-eks-t1.7.0"
+      - "cis-eks-t1.8.0"
+      - "cis-gke-v1.9.0"
+      - "cis-v1.10.0"
+      - "cis-v1.12.0"
+      - "cis-v1.23-t1.0.1"
     default: all
-    description: "Framework to scan the chart with."
+    description: >
+      Framework to scan the chart with. Names match `kubescape list frameworks`.
+      Older CIS identifiers (cis-eks-t1.2.0, cis-v1.23-t1.0.1) remain for
+      pipelines that pin Kubescape 3.x; they are not present in 4.0.15.
   namespace:
     type: string
     default: kubescape-orb
@@ -18,9 +39,25 @@ parameters:
     description: "Path to the output file."
   output_format:
     type: enum
-    enum: ["pretty-printer", "json", "junit", "prometheus", "pdf", "html", "sarif"]
+    enum:
+      - "pretty-printer"
+      - "json"
+      - "junit"
+      - "prometheus"
+      - "pdf"
+      - "html"
+      - "sarif"
+      - "gitlab-sast"
+      - "github-actions"
+      - "yaml"
+      - "csv"
+      - "markdown"
+      - "cyclonedx-json"
+      - "spdx-json"
+      - "policyreport"
+      - "exceptions"
     default: json
-    description: "Format to use for the output file."
+    description: "Format to use for the output file. Matches kubescape --format."
   verbose:
     type: boolean
     default: true
