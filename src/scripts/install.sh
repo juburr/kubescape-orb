@@ -6,6 +6,12 @@ set -e
 INSTALL_PATH=$(circleci env subst "${PARAM_INSTALL_PATH}")
 VERIFY_CHECKSUMS="${PARAM_VERIFY_CHECKSUMS}"
 VERSION=$(circleci env subst "${PARAM_VERSION}")
+VERSION="${VERSION#v}"
+
+if [[ -z "${VERSION}" ]]; then
+    echo "ERROR: A Kubescape version must be specified."
+    exit 1
+fi
 
 # Print command arguments for debugging purposes.
 echo "Running Kubescape installer..."
@@ -13,9 +19,47 @@ echo "  INSTALL_PATH: ${INSTALL_PATH}"
 echo "  VERIFY_CHECKSUMS: ${VERIFY_CHECKSUMS}"
 echo "  VERSION: ${VERSION}"
 
-# Lookup table of sha512 checksums for different versions of kubescape-ubuntu-latest
+# Resolve the GitHub release asset name. GoReleaser renamed Linux binaries
+# starting with v3.0.47 (kubescape-ubuntu-latest -> kubescape_${VERSION}_linux_amd64).
+kubescape_linux_amd64_asset() {
+    local version="$1"
+    if printf '%s\n%s\n' "3.0.47" "${version}" | sort -C -V; then
+        echo "kubescape_${version}_linux_amd64"
+    else
+        echo "kubescape-ubuntu-latest"
+    fi
+}
+
+# Lookup table of sha512 checksums for Linux amd64 Kubescape binaries.
 declare -A sha512sums
 sha512sums=(
+    ["4.0.15"]="eba2d3600d40fcafc54ad4bed6b8a4890dd8403b3093a3171c80c973969405a340f97a8c6bcbf0a3b574051fcf7d6d5c967eddb47b558e4f2d32050ff9a362f5"
+    ["4.0.14"]="27cc519225dc0d53e2434e6c2c09ad8e94dbb05844a70f80316c5bbe9a13c9dfab25576c827b741745facfbb00202995e644d46adbf5556a5ca742347cbb6b6e"
+    ["4.0.13"]="2260cf77dbc9c3664809823f1db6ca04eb87f173dd1a93e233277aa3a759d7e57e728d47c7f9e7e4306b2e8e3609add5fcd07a2495770ed403b9262d8f25b6eb"
+    ["4.0.12"]="d9a268370e7542d0b55c7ab37837811e956a4e53ee021a0c07f4d939a5314b5cef5ae6d03659e5d343834983b22fb91adddc7110763b23f29fe80d8250f00b82"
+    ["4.0.11"]="c06efbda7b376fa4df9545e738e56bed750068a98cadf9713acb0c5cd7a05cf10892fe36c02e38ca47e63c866149373be33c1a3d479b7e95049870245baba52b"
+    ["4.0.10"]="223689b359b50ee5c5b55bacfda46374902e1af626f585777b9f99273105b85756eb8bbc15439e5d6af9aa98287e13a8414fe450b6acd00962c5eb0966106df4"
+    ["4.0.9"]="879e1fb69114c26ab0c1f6f1445e1eb53fc0f18ac990f509d597f352eb08357ea0d646cc9e793de4986afab296317ebc8fcf33bf968cd09be10534b637b16886"
+    ["4.0.8"]="92e679be5b08d2241521eb5727c69becbad13b788ecd71f7bbaabd6079d0222f9526bc1e9cf16b2cf24709b0844b69eb357b3a92d8880e98605e79685e70bdd7"
+    ["4.0.7"]="bc7738b7622c7cc96fbae8621f56ebdbcc34b0583f149758746c669ccc6b9378399145400811c4671711ce2e7032d65990ba15b920c425b80580585a74d8afb3"
+    ["4.0.6"]="631ed70246d3b37473c46bca214ce0b4aa5c7c9bc42a83fc4ef884edac5232b7236a52692d81233d24567ac58aa9f9a141a65bc4f5727aec11e2a2a55248991f"
+    ["4.0.5"]="cc831d56800fa422cc499bed55e54b8057652e1d3564b3bdf66411f5cccc4bdae137c45e178bcbcf098b42d73f0f36849e3321b64f3e48990fa197e0a9dca7ee"
+    ["4.0.4"]="7c38074d82453bc12494f52f3ac4841e2d8b1925455c52c22512e54a8f1f687b0de15163632e4210d53d8e6b7610fe6cf44317071c67d7be0c14b02e5aee155d"
+    ["4.0.3"]="ca6a1fd10a9c89f606f9eeb4016912a92a2b847e81441184cf858bf6ad7a2b141368fd2a8a1bff11f18e91a1c57f9a94d586449c9ef0ff4fab9fa6937a2a992b"
+    ["4.0.2"]="5b2f603212be8a7a9af68a26e942760e16018e72e9685c38dfaf66ddeec9f9d47583f6a6605500cf7fafe0116c26a230ec8f42e63a2b735e5808ebc0794e9e4a"
+    ["4.0.1"]="45d2aa72796e14b6d4c09842a2df7446016083e586834d9a1f1bd9bc44131f8c10eb0a1e0b28752c07b532632bd82637725f3ef5fdf756756fc9e45d11b4be80"
+    ["4.0.0"]="c73db44cb545849eb26b719887e9888ac9f78070edaba3596bd4e0fbe749e6193da35e250b43775ff1b32e62519cecac4b52490f4047a92463cea1665a8e88a0"
+    ["3.0.48"]="c0650cb4abca6d61c45e6a74118365adb99e53bc59d7322ca6aff54e97cf77eeff938d89278db2812496ab44ff3fdc608a9ae3038c1d31b6a2f29cb11b1e069f"
+    ["3.0.47"]="1536d871e99ac06f94d8eba91eae54d49ab7a050e66353a805d300b39074257bafb4192868220c50aad7b61298b2c14d6850c110a1c935703b93f4f64118d667"
+    # v3.0.46 is the last release that published kubescape-ubuntu-latest.
+    ["3.0.46"]="33e3eefacd3d1161e4220685a6ae63bd12410de7cdae0cfeca8dc1400c4ab2616eeaddaeabf4e269594008e24c9d5398f090dc38b0fe98c83998c775f5a23f0d"
+    ["3.0.45"]="75007d5f4af00ce29eb20e658f1ee092f785a1cd951bc496bfc98e48466406ac237f73e021827a5dc4d46625aa90b28de88e9242e5e767bfcca79c742827c5a1"
+    ["3.0.44"]="f1981bc4b1d30603ca2b24c2bee2e93a2e5ee86666fbdfafa1f4b44c4f63def706f0744665a6a0bfd4762eb4fe3146f795ce1a6792794d05111b553d17d936d9"
+    ["3.0.43"]="11a9b351babf3a709ff2765c1933795a01075d36c3ae6a08883cd70bad0c2f0739f0ea26603ea9df6b7dbed6a6f76ce4ef4cafa220c7612caf07226569b31b46"
+    ["3.0.42"]="af626e5ce3c78837ca52670bd206259da93010e6e4e476e254f07849493d1bcf5038f180c3104d9acde77877478fc1ff351a054462b3de2aa4c60d167bfcffe7"
+    ["3.0.41"]="77ad2135b46367494834496996c5a605c11befcc8cb4e17cbe04fc4cf9d215d28e3676333c4f61a06c98d28a1c4742fd3f6bd159cc5d5c543dda041c514fb901"
+    ["3.0.40"]="df3b9f891a3b557798ef083e0e18eb533bb36f8e1ec856e61280b75d055f52ac9555d32c34b2908ef19acc89ef50b2d4e69316bbce95261d6356242e0a216532"
+    ["3.0.39"]="496edf0e7f825f5eb5d5b275fd750e139ba9c06f948532bfd803331e81f231aa8accbba392ee57954fb126a41e5236d929f64d3923d60c070879e5aeecb51861"
     ["3.0.38"]="c493f1726df427602f34b01a33439331cce7491fd544cf3881b00191e3cd201c7df97c8d3ca3bb7b77feb259d8444211e125e2919d50577a3fd562c4d38ff3f9"
     ["3.0.37"]="352fd9d4050308b8ce92d0bd123773a57fbdfbdc85cc8dd92f6d4ab9cea3c9206128a856c30faa62a0ea3d59624952546d1b226aa8aa5e4c3834e2c6c9c64330"
     ["3.0.36"]="6e348781351d86a205ee2cbb93b96506d3c42d5fbe1d0fa1df17790e4702a76d3ae8c5554e4482a786f1d1585d78770f8d821626aead47c4baeb7dfd5c1e3cfb"
@@ -57,7 +101,7 @@ sha512sums=(
     ["3.0.0"]="89b4cfea8a545725828644aed8381b7e85eb38e63a8bf63c855101fd34cfc397be08c875b8dbb8a8c7e8c02041231a4b330691cff52b64f7de11ecc6af1d9a6d"
 )
 
-# Verfies that the SHA-512 checksum of a file matches what was in the lookup table
+# Verifies that the SHA-512 checksum of a file matches what was in the lookup table
 verify_checksum() {
     local file=$1
     local expected_checksum=$2
@@ -84,18 +128,25 @@ fi
 
 # If there was no cache hit, go ahead and re-download the binary.
 if [[ ! -f kubescape ]]; then
+    ASSET_NAME=$(kubescape_linux_amd64_asset "${VERSION}")
+    DOWNLOAD_URL="https://github.com/kubescape/kubescape/releases/download/v${VERSION}/${ASSET_NAME}"
+    echo "Downloading ${DOWNLOAD_URL}..."
     if command -v wget &> /dev/null; then
-        wget "https://github.com/kubescape/kubescape/releases/download/v${VERSION}/kubescape-ubuntu-latest" -O kubescape
+        wget "${DOWNLOAD_URL}" -O kubescape
     elif command -v curl &> /dev/null; then
-        curl -L "https://github.com/kubescape/kubescape/releases/download/v${VERSION}/kubescape-ubuntu-latest" -o kubescape
+        curl -fL "${DOWNLOAD_URL}" -o kubescape
     else
         echo "ERROR: Neither wget nor curl is available. Please install one of them."
+        exit 1
+    fi
+    if [[ ! -s kubescape ]]; then
+        echo "ERROR: Downloaded Kubescape binary is empty. Check the version and asset URL."
         exit 1
     fi
     tar cvzf kubescape.tar.gz kubescape
 fi
 
-# An kubescape binary should exist at this point, regardless of whether it was obtained
+# A kubescape binary should exist at this point, regardless of whether it was obtained
 # through cache or re-downloaded. First verify its integrity.
 if [[ "${VERIFY_CHECKSUMS}" != "false" ]]; then
     EXPECTED_CHECKSUM=${sha512sums[${VERSION}]}
@@ -126,5 +177,6 @@ fi
 # directory and marking it as executable. If your pipeline throws an error
 # here, you may want to choose an INSTALL_PATH that doesn't require sudo access,
 # so this orb can avoid any root actions.
+mkdir -p "${INSTALL_PATH}"
 mv kubescape "${INSTALL_PATH}/kubescape"
 chmod +x "${INSTALL_PATH}/kubescape"

@@ -3,6 +3,7 @@ parameters:
   caching:
     type: boolean
     default: true
+    description: Cache the downloaded Kubescape binary between jobs using the selected version as the cache key.
   install_path:
     type: string
     default: "/home/circleci/bin"
@@ -14,7 +15,7 @@ parameters:
     description: Option to perform SHA-512 checksum verification on the downloaded Kubescape executable.
   version:
     type: string
-    default: "3.0.38"
+    default: "4.0.15"
     description: Specify the semver of the Kubescape version to install.
 steps:
   - when:
