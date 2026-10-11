@@ -33,12 +33,14 @@ fi
 mkdir -p "${YAML_DIR}"
 helm template "${CHART_PATH}" -n "${NAMESPACE}" > "${YAML_DIR}/chart.yaml"
 
-# Scan the YAML file using Kubescape
+# Scan the YAML file using Kubescape. Stdin is redirected because Kubescape 4.x
+# panics while printing verbose results when stdin is a terminal, as it is in
+# CircleCI steps; the scan reads the chart from the file, not stdin.
 kubescape scan framework "${FRAMEWORK}" \
     "${VERBOSE_ARG[@]}" \
     --format "${OUTPUT_FORMAT}" \
     --output "${OUTPUT_FILE}" \
-    "${YAML_DIR}/chart.yaml"
+    "${YAML_DIR}/chart.yaml" < /dev/null
 
 # Kubescape appends the format's extension when OUTPUT_FILE doesn't already end
 # with it (4.x does so for every format), so point at the real file if needed.
