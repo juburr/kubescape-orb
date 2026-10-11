@@ -49,6 +49,22 @@ commands:
             cd "${HOME}/charts"
             helm create myservice
             helm package myservice
+  # Scans the sample chart from setup-test-chart into /home/circleci/results.
+  scan-test-chart:
+    parameters:
+      framework:
+        type: string
+        default: nsa
+      output_format:
+        type: string
+      output_file:
+        type: string
+    steps:
+      - kubescape-orb/helm_scan_framework:
+          chart_path: /home/circleci/charts/myservice-0.1.0.tgz
+          framework: << parameters.framework >>
+          output_file: /home/circleci/results/<< parameters.output_file >>
+          output_format: << parameters.output_format >>
 
 jobs:
   # Create jobs to test the commands of your orbs.
@@ -89,6 +105,48 @@ jobs:
       - run:
           name: Verify Scan Results
           command: jq -e '.summaryDetails.frameworks | map(.name) | index("NSA")' /home/circleci/results/nsa.json
+  # Runs helm_scan_framework with the frameworks and output formats pipelines
+  # use most, on each supported Kubescape major version. The chart has failing
+  # controls, so every scan step passing also shows scans don't gate by default.
+  helm-scan-test:
+    parameters:
+      version:
+        type: string
+    docker:
+      # Ships Helm 4, while the Arm job installs Helm 3.
+      - image: cimg/deploy:2026.10
+    steps:
+      - checkout
+      - setup-test-chart
+      - kubescape-orb/install:
+          version: << parameters.version >>
+      - scan-test-chart: {framework: nsa, output_format: json, output_file: nsa.json}
+      - scan-test-chart: {framework: mitre, output_format: json, output_file: mitre.json}
+      - scan-test-chart: {framework: soc2, output_format: json, output_file: soc2.json}
+      - scan-test-chart: {framework: cis-v1.12.0, output_format: json, output_file: cis-v1.12.0.json}
+      - scan-test-chart: {framework: all, output_format: json, output_file: all.json}
+      - scan-test-chart: {output_format: sarif, output_file: nsa.sarif}
+      - scan-test-chart: {output_format: junit, output_file: nsa.xml}
+      - scan-test-chart: {output_format: html, output_file: nsa.html}
+      - scan-test-chart: {output_format: pdf, output_file: nsa.pdf}
+      - scan-test-chart: {output_format: prometheus, output_file: nsa.prom.txt}
+      - scan-test-chart: {output_format: pretty-printer, output_file: nsa.txt}
+      - when:
+          condition:
+            matches: {pattern: "^v?4\\..*$", value: << parameters.version >>}
+          steps:
+            - scan-test-chart: {output_format: csv, output_file: nsa.csv}
+            - scan-test-chart: {output_format: markdown, output_file: nsa.md}
+            - scan-test-chart: {output_format: yaml, output_file: nsa.yaml}
+            - scan-test-chart: {output_format: gitlab-sast, output_file: nsa.gitlab-sast.json}
+            - scan-test-chart: {output_format: github-actions, output_file: nsa.github-actions.txt}
+            - scan-test-chart: {output_format: policyreport, output_file: nsa.policyreport.yaml}
+            - scan-test-chart: {output_format: exceptions, output_file: nsa.exceptions.json}
+      - run:
+          name: Verify Scan Results
+          command: tests/verify_helm_scan_results.sh /home/circleci/results "<< parameters.version >>"
+      - store_artifacts:
+          path: /home/circleci/results
   # Exercises install.sh's checksum policy offline, including that a version
   # missing from the checksum table fails under the command's default settings.
   install-script-test:
@@ -115,6 +173,12 @@ workflows:
             parameters:
               version: ["3.0.38", "4.0.15"]
           filters: *filters
+      # 3.0.38 was the default before v0.4.0; 4.0.15 is the current default.
+      - helm-scan-test:
+          matrix:
+            parameters:
+              version: ["3.0.38", "4.0.15"]
+          filters: *filters
       # The orb must be re-packed for publishing, and saved to the workspace.
       - orb-tools/pack:
           filters: *release-filters
@@ -128,5 +192,6 @@ workflows:
             - command-test
             - install-script-test
             - command-test-arm64
+            - helm-scan-test
           context: orb-publishing
           filters: *release-filters

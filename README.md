@@ -24,7 +24,7 @@ Info for security teams:
 
 ## Example Usage
 
-The following example assumes a Helm chart was built in a previous job, and saved to the workspace.
+The following example assumes a Helm chart was built in a previous job, and saved to the workspace. `helm_scan_framework` renders the chart with `helm template`, so the executor needs Helm on its `PATH`; `cimg/deploy` includes it, `cimg/base` does not.
 
 This example uses the NSA framework for demonstration purposes, but many organizations will elect to use "all" (the default, if not supplied).
 
@@ -37,17 +37,34 @@ This example uses the NSA framework for demonstration purposes, but many organiz
   jobs:
     helm_scan:
       docker:
-        - image: cimg/base:current-22.04
+        - image: cimg/deploy:2026.10
       steps:
         - attach_workspace:
             at: /home/circleci/project/helm_charts
-        - kubescape/install
+        - kubescape/install:
+            version: "4.0.15"
         - kubescape/helm_scan_framework:
             chart_path: /home/circleci/project/helm_charts/myservice-1.0.0.tgz
             framework: nsa
             output_file: myservice_nsa_scan.json
             output_format: json
 ```
+
+## Kubescape Versions
+
+v0.4.0 of this orb changed the default Kubescape `version` from 3.0.38 to 4.0.15, a new major version. Pin `version` on the `install` command, as in the example above, so Kubescape only changes when you decide to rather than whenever the orb is upgraded.
+
+CI runs `helm_scan_framework` with Kubescape 3.0.38 and 4.0.15 on amd64, and installs and scans with both on arm64. Both versions accept the same flags and framework names. Both exit 0 when controls fail, since this orb doesn't pass a compliance or severity threshold, and exit non-zero on errors: an unknown framework, a failed policy download, or a chart with no resources the framework covers. Differences that matter when moving from 3.x to 4.x:
+
+| | Kubescape 3.x | Kubescape 4.x |
+| --- | --- | --- |
+| `output_format` | `pretty-printer`, `json`, `junit`, `prometheus`, `pdf`, `html`, `sarif`. Other values silently produce pretty-printer output. | Every format the orb accepts, adding `csv`, `markdown`, `yaml`, `gitlab-sast`, `github-actions`, `policyreport` and `exceptions`. |
+| SARIF output | Valid, but contains no results for scanned charts | Includes results |
+| `output_file` extension | Appended when missing for `json`, `junit` (`.xml`), `sarif`, `html` and `pdf` | Appended when missing for every format, e.g. `.txt` for `pretty-printer` and `prometheus` |
+| JSON report | Baseline | Same `summaryDetails` structure; adds `namespaceSummaries`, drops `jobID`, `paginationInfo` and `customerGUIDGenerated` |
+| Network access during scans | GitHub, to download policies | GitHub, plus `tuf-repo-cdn.sigstore.dev`: 4.x verifies downloaded policies with Sigstore and fails the scan if it can't |
+
+Give `output_file` the extension that matches `output_format` (see the parameter's description) so the report lands at exactly that path on either version. The `cis-eks-t1.2.0` and `cis-v1.23-t1.0.1` frameworks have been removed from Kubescape's policy library and fail on every Kubescape version, so `helm_scan_framework` no longer accepts them.
 
 ## Supported Platforms
 
