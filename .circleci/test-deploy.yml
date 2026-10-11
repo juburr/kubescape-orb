@@ -31,6 +31,16 @@ jobs:
       - run:
           name: Verify Install
           command: command -v kubescape
+  # Exercises install.sh's checksum policy offline, including that a version
+  # missing from the checksum table fails under the command's default settings.
+  install-script-test:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - checkout
+      - run:
+          name: Test install.sh checksum policy
+          command: tests/install_test.sh
 
 workflows:
   test-deploy:
@@ -38,6 +48,8 @@ workflows:
       # Make sure to include "filters: *filters" in every test job you want to run as part of your deployment.
       # Test your orb's commands in a custom job and test your orb's jobs directly as a part of this workflow.
       - command-test:
+          filters: *filters
+      - install-script-test:
           filters: *filters
       # The orb must be re-packed for publishing, and saved to the workspace.
       - orb-tools/pack:
@@ -50,5 +62,6 @@ workflows:
           requires:
             - orb-tools/pack
             - command-test
+            - install-script-test
           context: orb-publishing
           filters: *release-filters

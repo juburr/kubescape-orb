@@ -4,7 +4,8 @@ set -e
 
 # Ensure CircleCI environment variables can be passed in as orb parameters
 INSTALL_PATH=$(circleci env subst "${PARAM_INSTALL_PATH}")
-VERIFY_CHECKSUMS="${PARAM_VERIFY_CHECKSUMS}"
+# Fail closed when unset: only an explicit opt-out skips strict verification.
+VERIFY_CHECKSUMS="${PARAM_VERIFY_CHECKSUMS:-strict}"
 VERSION=$(circleci env subst "${PARAM_VERSION}")
 VERSION="${VERSION#v}"
 
@@ -12,6 +13,14 @@ if [[ -z "${VERSION}" ]]; then
     echo "ERROR: A Kubescape version must be specified."
     exit 1
 fi
+
+case "${VERIFY_CHECKSUMS}" in
+    strict | known_versions | false) ;;
+    *)
+        echo "ERROR: Invalid verify_checksums value '${VERIFY_CHECKSUMS}'. Expected strict, known_versions, or false."
+        exit 1
+        ;;
+esac
 
 # Print command arguments for debugging purposes.
 echo "Running Kubescape installer..."
@@ -120,6 +129,25 @@ verify_checksum() {
     echo "Checksum verification passed!"
 }
 
+# Decide whether this version can be verified before downloading anything.
+# A version missing from the lookup table means a new Kubescape release came
+# out but this orb hasn't been updated with its checksum yet. In strict mode
+# (the default) that is a hard error; known_versions allows it with a warning.
+EXPECTED_CHECKSUM="${sha512sums[${VERSION}]}"
+if [[ "${VERIFY_CHECKSUMS}" == "false" ]]; then
+    echo "WARN: Checksum validation is disabled. This is not recommended. Skipping..."
+elif [[ -z "${EXPECTED_CHECKSUM}" ]]; then
+    if [[ "${VERIFY_CHECKSUMS}" == "strict" ]]; then
+        echo "ERROR: No SHA-512 checksum available for Kubescape ${VERSION} and strict mode is enabled."
+        echo "ERROR: Upgrade this orb, submit a PR with the new checksum, or pin a version this orb lists."
+        echo "ERROR: To install it unverified anyway, set 'verify_checksums' to 'known_versions' (not recommended)."
+        exit 1
+    fi
+    echo "WARN: No SHA-512 checksum available for Kubescape ${VERSION}, and 'verify_checksums' is set to 'known_versions'."
+    echo "WARN: Either upgrade this orb or submit a PR with the new checksum."
+    echo "WARN: Skipping checksum verification..."
+fi
+
 # Check if the kubescape tar file was in the CircleCI cache.
 # Cache restoration is handled in install.yml
 if [[ -f kubescape.tar.gz ]]; then
@@ -147,30 +175,9 @@ if [[ ! -f kubescape ]]; then
 fi
 
 # A kubescape binary should exist at this point, regardless of whether it was obtained
-# through cache or re-downloaded. First verify its integrity.
-if [[ "${VERIFY_CHECKSUMS}" != "false" ]]; then
-    EXPECTED_CHECKSUM=${sha512sums[${VERSION}]}
-    if [[ -n "${EXPECTED_CHECKSUM}" ]]; then
-        # If the version is in the table, verify the checksum
-        verify_checksum "kubescape" "${EXPECTED_CHECKSUM}"
-    else
-        # If the version is not in the table, this means that a new version of kubescape
-        # was released but this orb hasn't been updated yet to include its checksum in
-        # the lookup table. Allow developers to configure if they want this to result in
-        # a hard error, via "strict mode" (recommended), or to allow execution for versions
-        # not directly specified in the above lookup table.
-        if [[ "${VERIFY_CHECKSUMS}" == "known_versions" ]]; then
-            echo "WARN: No checksum available for version ${VERSION}, but strict mode is not enabled."
-            echo "WARN: Either upgrade this orb, submit a PR with the new checksum."
-            echo "WARN: Skipping checksum verification..."
-        else
-            echo "ERROR: No checksum available for version ${VERSION} and strict mode is enabled."
-            echo "ERROR: Either upgrade this orb, submit a PR with the new checksum, or set 'verify_checksums' to 'known_versions'."
-            exit 1
-        fi
-    fi
-else
-    echo "WARN: Checksum validation is disabled. This is not recommended. Skipping..."
+# through cache or re-downloaded. Verify its integrity before installing it.
+if [[ "${VERIFY_CHECKSUMS}" != "false" && -n "${EXPECTED_CHECKSUM}" ]]; then
+    verify_checksum "kubescape" "${EXPECTED_CHECKSUM}"
 fi
 
 # After verifying integrity, install it by moving it to an appropriate bin
