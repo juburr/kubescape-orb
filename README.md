@@ -139,6 +139,15 @@ Optional hosts. Kubescape carries on without them:
             framework: nsa
             output_file: myservice_nsa_scan.json
             output_format: json
+
+  workflows:
+    scan:
+      jobs:
+        - download_kubescape_artifacts
+        # The scan job only sees workspace files from jobs it requires.
+        - helm_scan_offline:
+            requires:
+              - download_kubescape_artifacts
 ```
 
 With `artifacts_path` set, Kubescape loads the policies from that directory and skips its update check, so the scan opens no network connections. The exception is `all`, `allcontrols` and `armobest`, whose image signature controls still try to reach container registries and carry on when they can't. Download the artifacts with the same Kubescape version that scans, and refresh them regularly, since stale artifacts mean stale controls. You can also commit the directory to your repository instead of using a workspace.

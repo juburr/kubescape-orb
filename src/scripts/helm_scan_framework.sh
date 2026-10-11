@@ -30,7 +30,8 @@ if [[ "${VERBOSE}" == "1" ]]; then
 fi
 
 # Scanning from pre-downloaded artifacts is how this orb runs without network
-# access, so also skip Kubescape's update check. Otherwise it still contacts
+# access, so always skip Kubescape's update check, even if the job sets
+# KS_SKIP_UPDATE_CHECK=false. Otherwise it still contacts
 # version-check.ks-services.co, which stalls for about a minute on networks
 # that silently drop connections.
 ARTIFACTS_ARG=()
@@ -40,7 +41,7 @@ if [[ -n "${ARTIFACTS_PATH}" ]]; then
         exit 1
     fi
     ARTIFACTS_ARG=(--use-artifacts-from "${ARTIFACTS_PATH}")
-    export KS_SKIP_UPDATE_CHECK="${KS_SKIP_UPDATE_CHECK:-true}"
+    export KS_SKIP_UPDATE_CHECK=true
 fi
 
 # Kubescape takes Kubernetes YAML files as input, but we just have a
