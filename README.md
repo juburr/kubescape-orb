@@ -18,9 +18,7 @@ Scan Kubernetes YAML files and Helm charts in your CI pipeline using frameworks 
 - **Confidentiality**: All secrets and environment variables are handled in accordance with CircleCI's [security recommendations](https://circleci.com/docs/security-recommendations/) and [best practices](https://circleci.com/docs/orbs-best-practices/).
 - **Privacy**: No usage data of any kind is collected or shipped back to the orb developer.
 
-Info for security teams:
-- Required external access to allow, if running a locked down, self-hosted CircleCI pipeline on-prem:
-  - `github.com`: For download and installation of the Kubescape tool.
+Info for security teams: see [Network Access](#network-access) for the hosts to allow on locked-down or self-hosted runners, and [Running Offline](#running-offline) for scanning without network access.
 
 ## Example Usage
 
@@ -86,3 +84,63 @@ The `install` command checks the downloaded Kubescape binary against a SHA-512 l
 The table covers every Kubescape release this orb version knows about, including the default `version`. If you pin a Kubescape release newer than this orb, `strict` fails until the orb is upgraded. Upgrade the orb (or open a PR adding the checksum, generated with `src/scripts/install_hash.sh`) rather than opting out. `known_versions` and `false` remain available for cases where you accept running an unverified binary.
 
 > **Changed in v0.5.0:** the default was previously `known_versions`, which installed unlisted versions without verification. Pipelines that pin a Kubescape version newer than the orb's table now fail until they upgrade the orb or set `verify_checksums: known_versions` explicitly.
+
+## Network Access
+
+Hosts to allow (HTTPS, port 443) when running on a locked-down or self-hosted runner. They were confirmed by recording every connection Kubescape 3.0.38 and 4.0.15 made during `install` and `helm_scan_framework`.
+
+| Host | Needed by | Purpose |
+| --- | --- | --- |
+| `github.com` | `install`, `helm_scan_framework` | Kubescape release download; at scan time, policy downloads from [kubescape/regolibrary](https://github.com/kubescape/regolibrary/releases) releases |
+| `release-assets.githubusercontent.com` | `install`, `helm_scan_framework` | Where GitHub redirects release downloads |
+| `objects.githubusercontent.com` | `install`, `helm_scan_framework` | GitHub's previous redirect target for release downloads; allow it as well so a change on GitHub's side doesn't break downloads |
+| `tuf-repo-cdn.sigstore.dev` | `helm_scan_framework` with Kubescape 4.x | Sigstore trust root used to verify the downloaded policies' signatures. **Required:** when it is blocked, 4.x scans fail with `checksum verification failed ... failed to fetch Sigstore trusted root` |
+
+Optional hosts. Kubescape carries on without them:
+
+| Host | Used for | Notes |
+| --- | --- | --- |
+| `version-check.ks-services.co` | Kubescape's update check, on every scan | Set `KS_SKIP_UPDATE_CHECK: "true"` in the job's `environment` to turn it off. Where egress is silently dropped rather than rejected, it adds about a minute to each scan. |
+| Registries of the chart's container images (e.g. `index.docker.io`, `auth.docker.io`) | Image signature controls in the `all`, `allcontrols` and `armobest` frameworks | Other frameworks don't contact registries |
+
+`helm_scan_framework` runs `helm template` on a packaged chart, which needs no network access. The orb doesn't install Helm, so `get.helm.sh` isn't needed unless you install Helm yourself.
+
+## Running Offline
+
+`helm_scan_framework` only needs the network to download Kubescape's policies (frameworks, control inputs, exceptions and attack tracks). To scan without network access, download them where access is available and pass the directory as `artifacts_path`:
+
+```yaml
+  jobs:
+    download_kubescape_artifacts:
+      docker:
+        - image: cimg/base:current-22.04
+      steps:
+        - kubescape/install:
+            version: "4.0.15"
+        # Kubescape 4.x verifies the policies' Sigstore signatures here.
+        - run: kubescape download artifacts --output /home/circleci/kubescape-artifacts
+        - persist_to_workspace:
+            root: /home/circleci
+            paths:
+              - kubescape-artifacts
+
+    helm_scan_offline:
+      docker:
+        - image: cimg/deploy:2026.10
+      steps:
+        - attach_workspace:
+            at: /home/circleci
+        # Downloads from GitHub; see below for runners with no route to it.
+        - kubescape/install:
+            version: "4.0.15"
+        - kubescape/helm_scan_framework:
+            artifacts_path: /home/circleci/kubescape-artifacts
+            chart_path: /home/circleci/project/helm_charts/myservice-1.0.0.tgz
+            framework: nsa
+            output_file: myservice_nsa_scan.json
+            output_format: json
+```
+
+With `artifacts_path` set, Kubescape loads the policies from that directory and skips its update check, so the scan opens no network connections. The exception is `all`, `allcontrols` and `armobest`, whose image signature controls still try to reach container registries and carry on when they can't. Download the artifacts with the same Kubescape version that scans, and refresh them regularly, since stale artifacts mean stale controls. You can also commit the directory to your repository instead of using a workspace.
+
+`install` itself downloads Kubescape from GitHub. On a runner with no route to GitHub at all, bake Kubescape into the executor image instead, after checking its SHA-512 against the table in [`src/scripts/install.sh`](src/scripts/install.sh), and skip `install`.
