@@ -11,8 +11,12 @@ parameters:
   verify_checksums:
     type: enum
     enum: ["false", "known_versions", "strict"]
-    default: known_versions
-    description: Option to perform SHA-512 checksum verification on the downloaded Kubescape executable.
+    default: strict
+    description: >
+      SHA-512 checksum verification of the downloaded Kubescape executable.
+      "strict" (default) verifies the binary and fails if this orb has no checksum for the requested version.
+      "known_versions" verifies versions this orb lists and installs unlisted versions unverified, with a warning.
+      "false" disables verification entirely. Neither opt-out is recommended.
   version:
     type: string
     default: "4.0.15"

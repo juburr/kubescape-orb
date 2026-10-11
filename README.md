@@ -13,7 +13,7 @@ Scan Kubernetes YAML files and Helm charts in your CI pipeline using frameworks 
 ## Features
 ### **Secure By Design**
 - **Least Privilege**: Installs to a user-owned directory by default, with no `sudo` usage anywhere in this orb.
-- **Integrity**: Checksum validation of all downloaded binaries using SHA-512.
+- **Integrity**: Checksum validation of all downloaded binaries using SHA-512. Fails closed by default: a Kubescape version this orb has no checksum for is refused, not installed unverified. See [Checksum Verification](#checksum-verification).
 - **Provenance**: Installs directly from Kubescape's official [releases page](https://github.com/kubescape/kubescape/releases/) on GitHub. No third-party websites, domains, or proxies are used.
 - **Confidentiality**: All secrets and environment variables are handled in accordance with CircleCI's [security recommendations](https://circleci.com/docs/security-recommendations/) and [best practices](https://circleci.com/docs/orbs-best-practices/).
 - **Privacy**: No usage data of any kind is collected or shipped back to the orb developer.
@@ -48,3 +48,17 @@ This example uses the NSA framework for demonstration purposes, but many organiz
             output_file: myservice_nsa_scan.json
             output_format: json
 ```
+
+## Checksum Verification
+
+The `install` command checks the downloaded Kubescape binary against a SHA-512 lookup table built into the orb. The `verify_checksums` parameter controls what happens:
+
+| Value | Version in the orb's table | Version not in the table |
+| --- | --- | --- |
+| `strict` (default) | Verified; install fails on mismatch | Install fails before anything is downloaded |
+| `known_versions` | Verified; install fails on mismatch | Installed **unverified**, with a warning |
+| `false` | Not verified | Installed **unverified** |
+
+The table covers every Kubescape release this orb version knows about, including the default `version`. If you pin a Kubescape release newer than this orb, `strict` fails until the orb is upgraded. Upgrade the orb (or open a PR adding the checksum, generated with `src/scripts/install_hash.sh`) rather than opting out. `known_versions` and `false` remain available for cases where you accept running an unverified binary.
+
+> **Changed in v0.5.0:** the default was previously `known_versions`, which installed unlisted versions without verification. Pipelines that pin a Kubescape version newer than the orb's table now fail until they upgrade the orb or set `verify_checksums: known_versions` explicitly.
