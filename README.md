@@ -111,6 +111,17 @@ Optional hosts. Kubescape carries on without them:
 
 ```yaml
   jobs:
+    package_chart:
+      docker:
+        - image: cimg/deploy:2026.10
+      steps:
+        - checkout
+        - run: helm package charts/myservice --destination /home/circleci/helm_charts
+        - persist_to_workspace:
+            root: /home/circleci
+            paths:
+              - helm_charts
+
     download_kubescape_artifacts:
       docker:
         - image: cimg/base:current-22.04
@@ -135,7 +146,7 @@ Optional hosts. Kubescape carries on without them:
             version: "4.0.15"
         - kubescape/helm_scan_framework:
             artifacts_path: /home/circleci/kubescape-artifacts
-            chart_path: /home/circleci/project/helm_charts/myservice-1.0.0.tgz
+            chart_path: /home/circleci/helm_charts/myservice-1.0.0.tgz
             framework: nsa
             output_file: myservice_nsa_scan.json
             output_format: json
@@ -143,10 +154,13 @@ Optional hosts. Kubescape carries on without them:
   workflows:
     scan:
       jobs:
+        - package_chart
         - download_kubescape_artifacts
-        # The scan job only sees workspace files from jobs it requires.
+        # The scan job only sees workspace files (the chart and the
+        # artifacts) from the jobs it requires.
         - helm_scan_offline:
             requires:
+              - package_chart
               - download_kubescape_artifacts
 ```
 
