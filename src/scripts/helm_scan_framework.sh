@@ -42,5 +42,12 @@ kubescape scan framework "${FRAMEWORK}" \
     --output "${OUTPUT_FILE}" \
     "${YAML_DIR}/chart.yaml" < /dev/null
 
+# Kubescape appends the format's extension when OUTPUT_FILE doesn't already end
+# with it (4.x does so for every format), so point at the real file if needed.
+if [[ ! -e "${OUTPUT_FILE}" ]]; then
+    echo "WARN: ${OUTPUT_FILE} was not written. Kubescape appends the ${OUTPUT_FORMAT} format's extension when the name lacks it; found:"
+    ls -1 "${OUTPUT_FILE}".* 2> /dev/null || echo "WARN: no ${OUTPUT_FILE}.* files either."
+fi
+
 # Cleanup temporary files
 rm "${YAML_DIR}/chart.yaml"

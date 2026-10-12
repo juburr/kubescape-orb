@@ -18,25 +18,29 @@ parameters:
       - "soc2"
       - "cis-aks-t1.2.0"
       - "cis-aks-t1.8.0"
-      - "cis-eks-t1.2.0"
       - "cis-eks-t1.7.0"
       - "cis-eks-t1.8.0"
       - "cis-gke-v1.9.0"
       - "cis-v1.10.0"
       - "cis-v1.12.0"
-      - "cis-v1.23-t1.0.1"
     default: all
     description: >
-      Framework to scan the chart with. Names match `kubescape list frameworks`.
-      Older CIS identifiers (cis-eks-t1.2.0, cis-v1.23-t1.0.1) remain for
-      pipelines that pin Kubescape 3.x; they are not present in 4.x.
+      Framework to scan the chart with. Names match `kubescape list frameworks`, plus "all" and "security".
+      Kubescape downloads frameworks from the kubescape/regolibrary releases at scan time, so the same set
+      applies to Kubescape 3.x and 4.x. "agentruntimehardening" only covers Agent Sandbox resources
+      (Sandbox, SandboxTemplate, WorkerPool); for charts without them Kubescape exits non-zero with
+      "no resources found to scan".
   namespace:
     type: string
     default: kubescape-orb
     description: "Namespace to use when generating YAML files from Helm chart."
   output_file:
     type: string
-    description: "Path to the output file."
+    description: >
+      Path to the output file. Kubescape appends the format's extension when the name doesn't already end
+      with it (Kubescape 4.x does this for every format), so use the matching extension to get the exact path:
+      .json (json, gitlab-sast), .xml (junit), .sarif, .html, .pdf, .txt (pretty-printer, prometheus,
+      github-actions), .csv, .md (markdown), .yaml (yaml, policyreport), .exceptions.json (exceptions).
   output_format:
     type: enum
     enum:
@@ -56,9 +60,10 @@ parameters:
       - "exceptions"
     default: json
     description: >
-      Format to use for the output file. Matches kubescape --format for
-      posture scans. Image-scan-only formats (cyclonedx-json, spdx-json)
-      are omitted because this command does not scan container images.
+      Format to use for the output file. Matches kubescape --format for posture scans. Image-scan-only formats
+      (cyclonedx-json, spdx-json) are omitted because this command does not scan container images.
+      Kubescape 3.x only supports pretty-printer, json, junit, prometheus, pdf, html and sarif; for the other
+      formats it silently writes pretty-printer output.
   verbose:
     type: boolean
     default: true
