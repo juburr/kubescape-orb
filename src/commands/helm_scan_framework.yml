@@ -1,6 +1,14 @@
 description: >
   Scans a helm chart using one or more frameworks for compliance to security controls.
 parameters:
+  artifacts_path:
+    type: string
+    default: ""
+    description: >
+      Directory of Kubescape artifacts created with `kubescape download artifacts --output <dir>`. When set,
+      frameworks, control inputs, exceptions and attack tracks are loaded from it (--use-artifacts-from)
+      instead of being downloaded, and Kubescape's update check is skipped, so the scan needs no network
+      access. Leave empty to download them at scan time.
   chart_path:
     type: string
     description: "Helm chart to scan."
@@ -71,6 +79,7 @@ parameters:
 steps:
   - run:
       environment:
+        PARAM_ARTIFACTS_PATH: << parameters.artifacts_path >>
         PARAM_CHART_PATH: << parameters.chart_path >>
         PARAM_FRAMEWORK: << parameters.framework >>
         PARAM_NAMESPACE: << parameters.namespace >>

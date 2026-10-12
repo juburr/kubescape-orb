@@ -147,6 +147,54 @@ jobs:
           command: tests/verify_helm_scan_results.sh /home/circleci/results "<< parameters.version >>"
       - store_artifacts:
           path: /home/circleci/results
+  # Scans with network access blocked, using artifacts downloaded beforehand
+  # through the artifacts_path parameter, as documented under Running Offline.
+  helm-scan-offline-test:
+    parameters:
+      version:
+        type: string
+    docker:
+      - image: cimg/deploy:2026.10
+    steps:
+      - setup-test-chart
+      - kubescape-orb/install:
+          version: << parameters.version >>
+      - run:
+          name: Download Kubescape Artifacts
+          command: kubescape download artifacts --output /home/circleci/kubescape-artifacts
+      - run:
+          name: Block Network Access
+          command: |
+            # Send all HTTP(S) traffic in later steps to a closed local port.
+            for var in HTTP_PROXY HTTPS_PROXY http_proxy https_proxy; do
+              echo "export ${var}=http://127.0.0.1:9" >> "${BASH_ENV}"
+            done
+            echo "unset NO_PROXY no_proxy" >> "${BASH_ENV}"
+      - run:
+          name: Confirm Network Access Is Blocked
+          command: |
+            if curl -sS --max-time 20 -o /dev/null https://github.com; then
+              echo "github.com is still reachable"
+              exit 1
+            fi
+      - kubescape-orb/helm_scan_framework:
+          artifacts_path: /home/circleci/kubescape-artifacts
+          chart_path: /home/circleci/charts/myservice-0.1.0.tgz
+          framework: nsa
+          output_file: /home/circleci/results/nsa.json
+          output_format: json
+      # Its image signature controls try to reach the registry and must not fail the scan.
+      - kubescape-orb/helm_scan_framework:
+          artifacts_path: /home/circleci/kubescape-artifacts
+          chart_path: /home/circleci/charts/myservice-0.1.0.tgz
+          framework: all
+          output_file: /home/circleci/results/all.json
+          output_format: json
+      - run:
+          name: Verify Scan Results
+          command: |
+            jq -e '.summaryDetails.frameworks | map(.name) | index("NSA")' /home/circleci/results/nsa.json
+            jq -e '.summaryDetails.frameworks | length > 1' /home/circleci/results/all.json
   # Exercises install.sh's checksum policy offline, including that a version
   # missing from the checksum table fails under the command's default settings.
   install-script-test:
@@ -179,6 +227,11 @@ workflows:
             parameters:
               version: ["3.0.38", "4.0.15"]
           filters: *filters
+      - helm-scan-offline-test:
+          matrix:
+            parameters:
+              version: ["3.0.38", "4.0.15"]
+          filters: *filters
       # The orb must be re-packed for publishing, and saved to the workspace.
       - orb-tools/pack:
           filters: *release-filters
@@ -193,5 +246,6 @@ workflows:
             - install-script-test
             - command-test-arm64
             - helm-scan-test
+            - helm-scan-offline-test
           context: orb-publishing
           filters: *release-filters
