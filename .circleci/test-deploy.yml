@@ -19,6 +19,37 @@ release-filters: &release-filters
   tags:
     only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
 
+commands:
+  # Packages the chart from `helm create` for helm_scan_framework tests. Installs
+  # a pinned, checksum-verified Helm first when the executor doesn't ship one,
+  # outside the orb's default install path so tests still prove that the install
+  # command puts kubescape on PATH by itself.
+  setup-test-chart:
+    steps:
+      - run:
+          name: Package Sample Helm Chart
+          command: |
+            if ! command -v helm > /dev/null; then
+              HELM_VERSION="3.19.0"
+              case "$(uname -m)" in
+                x86_64) HELM_ARCH="amd64"; HELM_SHA256="a7f81ce08007091b86d8bd696eb4d86b8d0f2e1b9f6c714be62f82f96a594496" ;;
+                aarch64) HELM_ARCH="arm64"; HELM_SHA256="440cf7add0aee27ebc93fada965523c1dc2e0ab340d4348da2215737fc0d76ad" ;;
+                *) echo "Unsupported architecture: $(uname -m)"; exit 1 ;;
+              esac
+              curl -fsSL -o /tmp/helm.tar.gz "https://get.helm.sh/helm-v${HELM_VERSION}-linux-${HELM_ARCH}.tar.gz"
+              echo "${HELM_SHA256}  /tmp/helm.tar.gz" | sha256sum -c -
+              mkdir -p "${HOME}/.local/helm/bin"
+              tar -xzf /tmp/helm.tar.gz -C /tmp "linux-${HELM_ARCH}/helm"
+              mv "/tmp/linux-${HELM_ARCH}/helm" "${HOME}/.local/helm/bin/helm"
+              echo "export PATH=\"${HOME}/.local/helm/bin:\${PATH}\"" >> "${BASH_ENV}"
+              export PATH="${HOME}/.local/helm/bin:${PATH}"
+            fi
+            helm version
+            mkdir -p "${HOME}/charts"
+            cd "${HOME}/charts"
+            helm create myservice
+            helm package myservice
+
 jobs:
   # Create jobs to test the commands of your orbs.
   # You may want to add additional validation steps to ensure the commands are working as expected.
@@ -31,6 +62,33 @@ jobs:
       - run:
           name: Verify Install
           command: command -v kubescape
+  # Installs and runs the arm64 build on an Arm machine executor, where the
+  # default install path isn't necessarily on PATH, then scans a chart with it.
+  command-test-arm64:
+    parameters:
+      version:
+        type: string
+    machine:
+      image: ubuntu-2204:current
+    resource_class: arm.medium
+    steps:
+      - setup-test-chart
+      - kubescape-orb/install:
+          version: << parameters.version >>
+      - run:
+          name: Verify arm64 Install
+          command: |
+            test "$(uname -m)" = "aarch64"
+            command -v kubescape
+            kubescape version
+      - kubescape-orb/helm_scan_framework:
+          chart_path: /home/circleci/charts/myservice-0.1.0.tgz
+          framework: nsa
+          output_file: /home/circleci/results/nsa.json
+          output_format: json
+      - run:
+          name: Verify Scan Results
+          command: jq -e '.summaryDetails.frameworks | map(.name) | index("NSA")' /home/circleci/results/nsa.json
   # Exercises install.sh's checksum policy offline, including that a version
   # missing from the checksum table fails under the command's default settings.
   install-script-test:
@@ -51,6 +109,12 @@ workflows:
           filters: *filters
       - install-script-test:
           filters: *filters
+      # Covers both release asset naming schemes (3.0.46 and earlier, 3.0.47 and later).
+      - command-test-arm64:
+          matrix:
+            parameters:
+              version: ["3.0.38", "4.0.15"]
+          filters: *filters
       # The orb must be re-packed for publishing, and saved to the workspace.
       - orb-tools/pack:
           filters: *release-filters
@@ -63,5 +127,6 @@ workflows:
             - orb-tools/pack
             - command-test
             - install-script-test
+            - command-test-arm64
           context: orb-publishing
           filters: *release-filters

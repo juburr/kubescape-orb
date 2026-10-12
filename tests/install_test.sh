@@ -4,7 +4,8 @@
 # a scratch directory with wget and curl replaced by stubs that record the
 # requested URL and fail, so nothing is ever downloaded. Cases that need a
 # binary seed the kubescape.tar.gz cache file the script picks up from its
-# working directory.
+# working directory. uname is stubbed too, so results don't depend on the
+# platform running the tests.
 #
 # Usage: tests/install_test.sh (requires the circleci CLI for `circleci env subst`)
 
@@ -46,6 +47,19 @@ exit 1
 EOF
     chmod +x "${STUB_BIN}/${tool}"
 done
+cat > "${STUB_BIN}/uname" << 'EOF'
+#!/bin/bash
+case "$1" in
+    -s) echo "${FAKE_UNAME_S}" ;;
+    -m) echo "${FAKE_UNAME_M}" ;;
+    *) echo "uname stub: unsupported arguments: $*" >&2; exit 1 ;;
+esac
+EOF
+chmod +x "${STUB_BIN}/uname"
+
+# Platform reported by the uname stub; cases override these as needed.
+TEST_OS="Linux"
+TEST_MACHINE="x86_64"
 
 FAILURES=0
 CASE_DIR=""
@@ -64,8 +78,12 @@ run_install() {
         tar czf "${CASE_DIR}/work/kubescape.tar.gz" -C "${CASE_DIR}/work" kubescape
         rm "${CASE_DIR}/work/kubescape"
     fi
+    : > "${CASE_DIR}/bash_env"
     local env_args=(
         "PATH=${STUB_BIN}:${PATH}"
+        "BASH_ENV=${CASE_DIR}/bash_env"
+        "FAKE_UNAME_S=${TEST_OS}"
+        "FAKE_UNAME_M=${TEST_MACHINE}"
         "DOWNLOAD_LOG=${CASE_DIR}/downloads.log"
         "PARAM_INSTALL_PATH=${CASE_DIR}/bin"
         "PARAM_VERSION=${version}"
@@ -128,6 +146,17 @@ expect_no_download() {
     fi
 }
 
+# expect_download NAME ASSET: the case requested exactly ASSET from GitHub releases.
+expect_download() {
+    local name="$1" asset="$2" url
+    url=$(awk '{ print $1; exit }' "${CASE_DIR}/downloads.log" 2> /dev/null)
+    if [[ "${url}" != "https://github.com/kubescape/kubescape/releases/download/"*"/${asset}" ]]; then
+        fail "${name}: expected a download of ${asset}, got '${url}'"
+    else
+        pass "${name}"
+    fi
+}
+
 NO_CHECKSUM="No SHA-512 checksum available for Kubescape ${UNLISTED_VERSION}"
 MISMATCH="Checksum verification failed"
 
@@ -158,6 +187,47 @@ expect_success "tampered binary installs only when verification is disabled"
 
 run_install "invalid mode" "${LISTED_VERSION}" "bogus"
 expect_failure "invalid verify_checksums value fails" "Invalid verify_checksums value 'bogus'"
+
+# Architecture handling. Downloads fail at the stub, so these only check which
+# asset the script asked for and which checksum it verified against.
+for platform in "x86_64 4.0.15 kubescape_4.0.15_linux_amd64" \
+    "aarch64 4.0.15 kubescape_4.0.15_linux_arm64" \
+    "arm64 4.0.15 kubescape_4.0.15_linux_arm64" \
+    "x86_64 3.0.38 kubescape-ubuntu-latest" \
+    "aarch64 3.0.38 kubescape-arm64-ubuntu-latest"; do
+    read -r TEST_MACHINE version asset <<< "${platform}"
+    run_install "asset ${TEST_MACHINE} ${version}" "${version}" "${DEFAULT_VERIFY_CHECKSUMS}"
+    expect_download "uname -m ${TEST_MACHINE} downloads ${asset} for ${version}" "${asset}"
+done
+
+TEST_MACHINE="x86_64"
+run_install "checksum amd64" "${LISTED_VERSION}" "${DEFAULT_VERIFY_CHECKSUMS}" "tampered binary"
+expect_failure "amd64 binary is verified against the amd64 checksum" "Expected: eba2d3600d40fcaf"
+
+TEST_MACHINE="aarch64"
+run_install "checksum arm64" "${LISTED_VERSION}" "${DEFAULT_VERIFY_CHECKSUMS}" "tampered binary"
+expect_failure "arm64 binary is verified against the arm64 checksum" "Expected: b188f3d08d7b3f69"
+
+TEST_MACHINE="riscv64"
+run_install "unsupported machine" "${LISTED_VERSION}" "${DEFAULT_VERIFY_CHECKSUMS}"
+expect_failure "unsupported CPU architecture fails" "Unsupported CPU architecture 'riscv64'"
+expect_no_download "unsupported CPU architecture fails before downloading"
+
+TEST_OS="Darwin"
+TEST_MACHINE="arm64"
+run_install "unsupported os" "${LISTED_VERSION}" "${DEFAULT_VERIFY_CHECKSUMS}"
+expect_failure "non-Linux operating system fails" "Unsupported operating system 'Darwin'"
+expect_no_download "non-Linux operating system fails before downloading"
+TEST_OS="Linux"
+TEST_MACHINE="x86_64"
+
+# The install path is exported for later steps when it isn't already on PATH.
+run_install "path export" "${UNLISTED_VERSION}" "false" "unlisted binary"
+if grep -qF "export PATH=${CASE_DIR}/bin:" "${CASE_DIR}/bash_env"; then
+    pass "install path is added to PATH through BASH_ENV"
+else
+    fail "install path is added to PATH through BASH_ENV: got '$(cat "${CASE_DIR}/bash_env")'"
+fi
 
 if [[ "${FAILURES}" -gt 0 ]]; then
     echo "${FAILURES} test(s) failed."

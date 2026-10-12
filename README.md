@@ -49,9 +49,15 @@ This example uses the NSA framework for demonstration purposes, but many organiz
             output_format: json
 ```
 
+## Supported Platforms
+
+Linux executors on `x86_64` (amd64) and `aarch64`/`arm64` (arm64), including CircleCI [Arm resource classes](https://circleci.com/docs/using-arm/). The `install` command picks the Kubescape release asset for the architecture reported by `uname -m` and verifies it against that architecture's SHA-512 checksum. Any other operating system or architecture fails the install rather than installing a binary that can't run.
+
+The download cache is keyed by Kubescape version and executor architecture, so amd64 and arm64 jobs never share a cached binary. On executors whose `PATH` doesn't already include `install_path` (for example, machine executors), `install` adds it for later steps through `BASH_ENV`.
+
 ## Checksum Verification
 
-The `install` command checks the downloaded Kubescape binary against a SHA-512 lookup table built into the orb. The `verify_checksums` parameter controls what happens:
+The `install` command checks the downloaded Kubescape binary against a SHA-512 lookup table built into the orb, with one entry per Kubescape version and architecture. The `verify_checksums` parameter controls what happens:
 
 | Value | Version in the orb's table | Version not in the table |
 | --- | --- | --- |
