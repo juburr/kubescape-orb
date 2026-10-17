@@ -7,7 +7,8 @@
 ### Catch Kubernetes misconfigurations in CI, long before they reach a cluster.
 
 Install [Kubescape](https://kubescape.io) and scan your Helm charts against **NSA-CISA**, **MITRE**, **CIS**, **SOC 2** and more<br>
-with two steps of CircleCI config. Verified binaries, no `sudo`, no telemetry.
+with two steps of CircleCI config.<br>
+Strict SHA-512 verification by default · No `sudo` · No usage data collected by the orb
 
 [![CircleCI Build Status](https://circleci.com/gh/juburr/kubescape-orb.svg?style=shield "CircleCI Build Status")](https://circleci.com/gh/juburr/kubescape-orb)
 [![CircleCI Orb Version](https://badges.circleci.com/orbs/juburr/kubescape-orb.svg)](https://circleci.com/developer/orbs/orb/juburr/kubescape-orb)
@@ -16,8 +17,8 @@ with two steps of CircleCI config. Verified binaries, no `sudo`, no telemetry.
 
 ![Kubescape 3.x and 4.x](https://img.shields.io/badge/Kubescape-3.x%20%7C%204.x-7C3AED?style=for-the-badge&logo=kubernetes&logoColor=white)
 ![amd64 and arm64](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-0EA5E9?style=for-the-badge&logo=linux&logoColor=white)
-![SHA-512 verified](https://img.shields.io/badge/SHA--512-verified-16A34A?style=for-the-badge)
-![Zero telemetry](https://img.shields.io/badge/telemetry-zero-DB2777?style=for-the-badge)
+![SHA-512 verified by default](https://img.shields.io/badge/SHA--512-strict%20by%20default-16A34A?style=for-the-badge)
+![No sudo required](https://img.shields.io/badge/sudo-not%20required-DB2777?style=for-the-badge)
 
 **[Quick Start](#-quick-start)** · **[Features](#-why-kubescape-orb)** · **[Frameworks](#-frameworks)** · **[Commands](#-commands)** · **[Security](#-secure-by-design)** · **[Offline Scans](#-running-offline)**
 
@@ -47,7 +48,7 @@ JSON, JUnit, SARIF, HTML, PDF and Prometheus, plus CSV, Markdown, GitLab SAST an
 <tr>
 <td width="33%" valign="top">
 🔐 <b>Verified, fail-closed installs</b><br><br>
-Every Kubescape binary is checked against a SHA-512 table built into the orb. Versions it can't verify are refused, not run.
+By default, every Kubescape binary is checked against a SHA-512 table built into the orb, and versions it can't verify are refused, not run. <a href="#-checksum-verification">Opt-outs</a> are explicit.
 </td>
 <td width="33%" valign="top">
 🦾 <b>amd64 and arm64</b><br><br>
@@ -82,7 +83,7 @@ flowchart LR
     class stop bad
 ```
 
-`kubescape/install` downloads Kubescape straight from its official GitHub releases, verifies it, and puts it on `PATH`. `kubescape/helm_scan_framework` renders your chart and scans it with the framework you choose.
+`kubescape/install` downloads Kubescape straight from its official GitHub releases, verifies its SHA-512 checksum in the default `strict` mode shown here, and puts it on `PATH`. See [Checksum Verification](#-checksum-verification) for the other modes. `kubescape/helm_scan_framework` renders your chart and scans it with the framework you choose.
 
 ## 🚀 Quick Start
 
@@ -201,10 +202,10 @@ Renders a Helm chart with `helm template` and scans it with a compliance framewo
 ## 🔒 Secure by Design
 
 - **Least Privilege**: Installs to a user-owned directory by default, with no `sudo` usage anywhere in this orb.
-- **Integrity**: Checksum validation of all downloaded binaries using SHA-512. Fails closed by default: a Kubescape version this orb has no checksum for is refused, not installed unverified, and a binary that can't run on the executor never replaces an existing install. See [Checksum Verification](#-checksum-verification).
+- **Integrity**: SHA-512 checksum validation of downloaded binaries. Fails closed by default: a Kubescape version this orb has no checksum for is refused, not installed unverified, and a binary that can't run on the executor never replaces an existing install. See [Checksum Verification](#-checksum-verification) for the `known_versions` and `false` opt-outs.
 - **Provenance**: Installs directly from Kubescape's official [releases page](https://github.com/kubescape/kubescape/releases/) on GitHub. No third-party websites, domains, or proxies are used.
 - **Confidentiality**: All secrets and environment variables are handled in accordance with CircleCI's [security recommendations](https://circleci.com/docs/security-recommendations/) and [best practices](https://circleci.com/docs/orbs-best-practices/).
-- **Privacy**: No usage data of any kind is collected or shipped back to the orb developer.
+- **Privacy**: No usage data of any kind is collected or shipped back to the orb developer. Kubescape itself is a separate matter: its update check sends details such as its version, the framework being scanned and the scan context to `version-check.ks-services.co` unless `KS_SKIP_UPDATE_CHECK` is `"true"` or `artifacts_path` is set, and Kubescape 4.x exports OpenTelemetry traces and metrics when the job sets `OTEL_EXPORTER_OTLP_ENDPOINT`. See [Network Access](#-network-access).
 
 > [!IMPORTANT]
 > **Info for security teams:** see [Network Access](#-network-access) for the hosts to allow on locked-down or self-hosted runners, and [Running Offline](#-running-offline) for scanning without network access.
