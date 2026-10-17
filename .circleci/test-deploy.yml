@@ -195,16 +195,13 @@ jobs:
           command: |
             jq -e '.summaryDetails.frameworks | map(.name) | index("NSA")' /home/circleci/results/nsa.json
             jq -e '.summaryDetails.frameworks | length > 1' /home/circleci/results/all.json
-  # Exercises install.sh's checksum policy offline, including that a version
-  # missing from the checksum table fails under the command's default settings.
-  install-script-test:
+  # The install contract runs in the setup workflow (config.yml); this checks
+  # that parameter values reach circleci env subst on stdin.
+  env-subst-test:
     docker:
       - image: cimg/base:current-22.04
     steps:
       - checkout
-      - run:
-          name: Test install.sh checksum policy
-          command: tests/install_test.sh
       - run:
           name: Test that parameter values reach circleci env subst on stdin
           command: bash tests/env_subst_test.sh
@@ -216,7 +213,7 @@ workflows:
       # Test your orb's commands in a custom job and test your orb's jobs directly as a part of this workflow.
       - command-test:
           filters: *filters
-      - install-script-test:
+      - env-subst-test:
           filters: *filters
       # Covers both release asset naming schemes (3.0.46 and earlier, 3.0.47 and later).
       - command-test-arm64:
@@ -246,7 +243,7 @@ workflows:
           requires:
             - orb-tools/pack
             - command-test
-            - install-script-test
+            - env-subst-test
             - command-test-arm64
             - helm-scan-test
             - helm-scan-offline-test
