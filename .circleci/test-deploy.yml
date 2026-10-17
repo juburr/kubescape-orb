@@ -205,6 +205,9 @@ jobs:
       - run:
           name: Test install.sh checksum policy
           command: tests/install_test.sh
+      - run:
+          name: Test that parameter values reach circleci env subst on stdin
+          command: bash tests/env_subst_test.sh
 
 workflows:
   test-deploy:
