@@ -4,14 +4,14 @@ set -e
 set +o history
 
 # Prepare orb parameters
-ARTIFACTS_PATH=$(circleci env subst "${PARAM_ARTIFACTS_PATH}")
-CHART_PATH=$(circleci env subst "${PARAM_CHART_PATH}")
+ARTIFACTS_PATH=$(printf '%s' "${PARAM_ARTIFACTS_PATH}" | circleci env subst)
+CHART_PATH=$(printf '%s' "${PARAM_CHART_PATH}" | circleci env subst)
 FRAMEWORK="${PARAM_FRAMEWORK}"
-NAMESPACE=$(circleci env subst "${PARAM_NAMESPACE}")
-OUTPUT_FILE=$(circleci env subst "${PARAM_OUTPUT_FILE}")
+NAMESPACE=$(printf '%s' "${PARAM_NAMESPACE}" | circleci env subst)
+OUTPUT_FILE=$(printf '%s' "${PARAM_OUTPUT_FILE}" | circleci env subst)
 OUTPUT_FORMAT="${PARAM_OUTPUT_FORMAT}"
 YAML_DIR="${HOME}/.local/share/kubescape-orb/yamls"
-VERBOSE=$(circleci env subst "${PARAM_VERBOSE}")
+VERBOSE=$(printf '%s' "${PARAM_VERBOSE}" | circleci env subst)
 
 # Print parameters for debugging purposes.
 echo "Running Kubescape framework scan..."

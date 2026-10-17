@@ -3,10 +3,10 @@
 set -e
 
 # Ensure CircleCI environment variables can be passed in as orb parameters
-INSTALL_PATH=$(circleci env subst "${PARAM_INSTALL_PATH}")
+INSTALL_PATH=$(printf '%s' "${PARAM_INSTALL_PATH}" | circleci env subst)
 # Fail closed when unset: only an explicit opt-out skips strict verification.
 VERIFY_CHECKSUMS="${PARAM_VERIFY_CHECKSUMS:-strict}"
-VERSION=$(circleci env subst "${PARAM_VERSION}")
+VERSION=$(printf '%s' "${PARAM_VERSION}" | circleci env subst)
 VERSION="${VERSION#v}"
 
 if [[ -z "${VERSION}" ]]; then
