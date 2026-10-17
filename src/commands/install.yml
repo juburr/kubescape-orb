@@ -1,40 +1,54 @@
-description: Installs the kubescape binary. This command should be invoked prior to calling any other commands.
+description: >
+  Installs Kubescape for Linux on amd64 or arm64, picked from the machine's CPU
+  architecture, after verifying its SHA-512 checksum. Run this before the
+  orb's other commands.
 parameters:
   caching:
     type: boolean
     default: true
     description: >
-      Cache the downloaded Kubescape binary between jobs, keyed by the selected version and the
-      executor's OS/CPU architecture. A cached binary is still checksum-verified before install.
+      Cache the downloaded release between jobs, keyed by version and CPU
+      architecture. Only verified releases are cached, and a cached release
+      is verified again before it is installed.
   install_path:
     type: string
-    default: "/home/circleci/bin"
-    description: Path to a binary directory not requiring root access (no trailing slash).
+    default: ""
+    description: >
+      Absolute path of the directory to install kubescape into. It is created
+      if needed and added to the PATH of later steps when it isn't already on
+      it, and must be writable without root. Environment variables are
+      expanded. Defaults to $HOME/bin.
   verify_checksums:
     type: enum
     enum: ["false", "known_versions", "strict"]
     default: strict
     description: >
-      SHA-512 checksum verification of the downloaded Kubescape executable.
-      "strict" (default) verifies the binary and fails if this orb has no checksum for the requested version.
-      "known_versions" verifies versions this orb lists and installs unlisted versions unverified, with a warning.
-      "false" disables verification entirely. Neither opt-out is recommended.
+      SHA-512 verification against this orb's checksum table. "strict"
+      (default) fails before downloading anything when the version has no
+      checksum in the table. "known_versions" verifies listed versions and
+      installs unlisted versions unverified, with a warning. "false" skips
+      verification and is not recommended.
   version:
     type: string
     default: "4.0.15"
-    description: Specify the semver of the Kubescape version to install.
+    description: >
+      Version of Kubescape to install, such as 4.0.15. A leading "v" is
+      ignored, and environment variables are expanded.
 steps:
-  # restore_cache matches keys by prefix, so the version is followed by a
-  # delimiter (otherwise 4.0.1 could restore a 4.0.15 cache), and {{ arch }}
-  # keeps amd64 and arm64 binaries apart.
   - when:
       condition: << parameters.caching >>
       steps:
+        # The cache key names the CPU with uname -m rather than {{ arch }},
+        # which also encodes the CPU model and would split the cache by host.
+        - run:
+            name: Prepare Kubescape cache key
+            command: uname -m > /tmp/kubescape-orb-arch
         - restore_cache:
-            key: kubescape-cache-<< parameters.version >>-{{ arch }}
+            key: kubescape-orb-v1-<< parameters.version >>-{{ checksum "/tmp/kubescape-orb-arch" }}
   - run:
       name: Install Kubescape << parameters.version >>
       environment:
+        PARAM_CACHING: << parameters.caching >>
         PARAM_INSTALL_PATH: << parameters.install_path >>
         PARAM_VERIFY_CHECKSUMS: << parameters.verify_checksums >>
         PARAM_VERSION: << parameters.version >>
@@ -43,9 +57,6 @@ steps:
       condition: << parameters.caching >>
       steps:
         - save_cache:
-            key: kubescape-cache-<< parameters.version >>-{{ arch }}
+            key: kubescape-orb-v1-<< parameters.version >>-{{ checksum "/tmp/kubescape-orb-arch" }}
             paths:
-              - kubescape.tar.gz
-  - run:
-      name: Cleanup Kubescape Install
-      command: rm kubescape.tar.gz
+              - ~/.cache/kubescape-orb
