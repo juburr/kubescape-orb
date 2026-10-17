@@ -1,93 +1,247 @@
 #!/bin/bash
+#
+# Prints checksum table entries for a Kubescape release, ready to paste into the
+# sha512sums table in install.sh. A development helper: the orb never runs it.
+#
+#   src/scripts/install_hash.sh -v <version> [-a "<arch> ..."] [-c <checksum>]
+#
+#   -a  architectures to hash (default: every one install.sh supports)
+#   -c  the checksum Kubescape published for the asset, as SHA-256:<hex> or
+#       SHA1:<hex>, when verify_upstream cannot fetch it; or NONE to add an
+#       entry that is not anchored to any published checksum
+#
+# Each asset is checked against what the Kubescape project published for the
+# release before its entry is printed (see verify_upstream). Entries go to
+# stdout and everything else to stderr, so the output can be pasted as is.
 
-# Convenience script, not used by directly by the production orb, but
-# for development purposes when adding SHA-512 checksums to the lookup
-# table in install.sh. Prints one entry per supported architecture.
+set -euo pipefail
 
-set -e
-set +o history
+# >>> upstream verification >>>
+# verify_upstream VERSION ARCH ASSET: checks ASSET against the SHA-256 that
+# Kubescape publishes, in checksums.sha256 (newer releases) or <asset>.sha256
+# (older ones), and the keyless Sigstore signature on checksums.sha256 from
+# 4.0.13 on (which needs cosign).
+# Returns 0 when it matches, 2 when nothing was published, and 1 otherwise.
+verify_upstream() {
+    local base="https://github.com/kubescape/kubescape/releases/download/v$1" name=${3##*/} published="" actual rc=0
+    hash_fetch "${base}/checksums.sha256" list || rc=$?
+    if [[ "${rc}" -eq 1 ]]; then
+        return 1
+    elif [[ "${rc}" -eq 2 ]] && hash_version_le 4.0.13 "$1"; then
+        echo "ERROR: Kubescape publishes a signed checksums.sha256 from 4.0.13 on, but $1 has none."
+        return 1
+    elif [[ "${rc}" -eq 0 ]]; then
+        # From 4.0.13 on, Kubescape signs the list with a keyless Sigstore
+        # certificate, in a .sigstore.json bundle or a .sig and .pem pair, so a missing
+        # signature is an error. Older lists are used unsigned.
+        local signature=(--bundle list.sigstore.json)
+        rc=0
+        hash_fetch "${base}/checksums.sha256.sigstore.json" list.sigstore.json || rc=$?
+        if [[ "${rc}" -eq 2 ]]; then
+            signature=(--signature list.sig --certificate list.pem)
+            rc=0
+            hash_fetch "${base}/checksums.sha256.sig" list.sig || rc=$?
+            if [[ "${rc}" -eq 0 ]]; then
+                hash_fetch "${base}/checksums.sha256.pem" list.pem || rc=$?
+            fi
+        fi
+        if [[ "${rc}" -eq 1 ]]; then
+            return 1
+        elif [[ "${rc}" -eq 2 ]]; then
+            if hash_version_le 4.0.13 "$1"; then
+                echo "ERROR: Kubescape signs checksums.sha256 from 4.0.13 on, but $1 has neither a Sigstore bundle nor a signature and certificate."
+                return 1
+            fi
+            echo "NOTE: Kubescape $1 publishes no keyless signature for checksums.sha256; using it unsigned."
+        else
+            if ! command -v cosign > /dev/null; then
+                echo "ERROR: cosign is required to verify the signature on checksums.sha256."
+                return 1
+            fi
+            if ! cosign verify-blob "${signature[@]}" \
+                --certificate-identity "https://github.com/kubescape/kubescape/.github/workflows/02-release.yaml@refs/tags/v$1" \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com list > /dev/null 2>&1; then
+                echo "ERROR: cosign could not verify the signature on checksums.sha256."
+                return 1
+            fi
+            echo "ok: the signature on checksums.sha256 verified."
+        fi
+        published=$(awk -v name="${name}" '$2 == name || $2 == "*" name { print $1; exit }' list)
+        if [[ -z "${published}" ]] && hash_version_le 4.0.13 "$1"; then
+            echo "checksums.sha256 does not list ${name}."
+            return 2
+        fi
+    fi
+    if [[ -z "${published}" ]]; then
+        rc=0
+        hash_fetch "${base}/${name}.sha256" asset.sha256 || rc=$?
+        if [[ "${rc}" -eq 1 ]]; then
+            return 1
+        elif [[ "${rc}" -eq 0 ]]; then
+            published=$(awk '{ print $1; exit }' asset.sha256)
+        fi
+    fi
+    if [[ -z "${published}" ]]; then
+        echo "Kubescape $1 publishes no SHA-256 for ${name}."
+        return 2
+    fi
+    actual=$(sha256sum "$3" | awk '{ print $1 }')
+    if [[ "${actual}" != "${published}" ]]; then
+        echo "ERROR: ${name} has SHA-256 ${actual}, but ${published} was published."
+        return 1
+    fi
+    echo "ok: ${name} matches the published SHA-256."
+}
+# <<< upstream verification <<<
 
-# Fetch CLI arguments
-# Can also be set as environment variables.
-while getopts :v: flag
-do
-    case "${flag}" in
-        v) VERSION=${OPTARG};;
-        *) echo "Invalid option: -${OPTARG}" >&2; exit 1;;
+# >>> shared install_hash logic >>>
+# Everything from here to the end marker is identical in the install_hash.sh
+# of every juburr orb. The tool definition, and with it the asset names and
+# URLs, is read from install.sh so the two scripts cannot disagree.
+
+hash_die() {
+    printf 'ERROR: %s\n' "$*" >&2
+    exit 1
+}
+
+hash_usage() {
+    printf 'Usage: %s -v <version> [-a "<arch> ..."] [-c SHA-256:<hex> | -c SHA1:<hex> | -c NONE]\n' "$0" >&2
+    exit 1
+}
+
+# hash_fetch URL DEST [CURL_ARG...]: downloads URL to DEST for verify_upstream.
+# Returns 0 on success, 2 when the server says there is no such file (404),
+# and 1 on any other failure, which must never be read as "not published".
+hash_fetch() {
+    local url=$1 dest=$2 code rc=0
+    shift 2
+    # Without -f, curl exits 0 on an HTTP error, so a non-zero exit is a
+    # transfer failure, such as a connection that closed partway.
+    code=$(curl -sSL --proto '=https' --proto-redir '=https' --retry 5 --connect-timeout 30 \
+        -o "${dest}" -w '%{http_code}' "$@" "${url}") || rc=$?
+    if [[ "${rc}" -ne 0 ]]; then
+        echo "ERROR: could not download ${url} (curl exit code ${rc})."
+        return 1
+    fi
+    case "${code}" in
+        200) return 0 ;;
+        404) return 2 ;;
+        *)
+            echo "ERROR: could not download ${url} (HTTP status ${code:-none})."
+            return 1
+            ;;
     esac
-done
+}
 
-# Validate input arguments
-VERSION="${VERSION#v}"
-if [[ -z "${VERSION}" ]]; then
-  echo "Must specify a version number."
-  echo "Usage: $0 -v 1.0.0"
-  echo "Alternatively: VERSION=1.0.0 $0"
-  exit 1
+# hash_version_le A B: succeeds if version A sorts at or before version B.
+hash_version_le() {
+    [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" == "$1" ]]
+}
+
+# Loads install.sh's tool definition and shared functions, without its
+# checksum table or main call.
+INSTALL_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install.sh"
+# shellcheck source=/dev/null
+source <(sed -n '/^# >>> tool definition >>>$/,/^# <<< shared install logic <<<$/p' "${INSTALL_SCRIPT}")
+if ! declare -F tool_asset_name > /dev/null; then
+    hash_die "Could not load the tool definition from ${INSTALL_SCRIPT}."
 fi
 
-# Resolve the GitHub release asset name. GoReleaser renamed Linux binaries
-# starting with v3.0.47 (kubescape-ubuntu-latest -> kubescape_${VERSION}_linux_amd64,
-# kubescape-arm64-ubuntu-latest -> kubescape_${VERSION}_linux_arm64).
-kubescape_linux_asset() {
-    local version="$1"
-    local arch="$2"
-    if printf '%s\n%s\n' "3.0.47" "${version}" | sort -C -V; then
-        echo "kubescape_${version}_linux_${arch}"
-    elif [[ "${arch}" == "arm64" ]]; then
-        echo "kubescape-arm64-ubuntu-latest"
-    else
-        echo "kubescape-ubuntu-latest"
-    fi
-}
-
-download() {
-    local url="$1"
-    local output="$2"
-    if command -v wget &> /dev/null; then
-        wget "${url}" -O "${output}" -q
-    elif command -v curl &> /dev/null; then
-        curl -fsSL "${url}" -o "${output}"
-    else
-        echo "ERROR: Neither wget nor curl is available. Please install one of them." >&2
-        exit 1
-    fi
-}
-
-RELEASE_URL="https://github.com/kubescape/kubescape/releases/download/v${VERSION}"
-WORK_DIR=$(mktemp -d)
-trap 'rm -rf "${WORK_DIR}"' EXIT
-
-# Kubescape publishes SHA-256 sums for most releases, either in a combined
-# checksums.sha256 file (newer releases) or as <asset>.sha256 (older ones).
-# When available, confirm the download matches before printing its SHA-512.
-download "${RELEASE_URL}/checksums.sha256" "${WORK_DIR}/checksums.sha256" 2> /dev/null || true
-
-# Download the specified version and get the SHA-512 checksum of
-# the kubescape binary for each architecture. Suppress output for readability;
-# this is a dev script, so simply re-enable output if you need to debug anything.
-for ARCH in amd64 arm64; do
-    ASSET_NAME=$(kubescape_linux_asset "${VERSION}" "${ARCH}")
-    download "${RELEASE_URL}/${ASSET_NAME}" "${WORK_DIR}/kubescape"
-
-    UPSTREAM_SHA256=""
-    if [[ -s "${WORK_DIR}/checksums.sha256" ]]; then
-        UPSTREAM_SHA256=$(awk -v asset="${ASSET_NAME}" '$2 == asset { print $1 }' "${WORK_DIR}/checksums.sha256")
-    fi
-    if [[ -z "${UPSTREAM_SHA256}" ]] && download "${RELEASE_URL}/${ASSET_NAME}.sha256" "${WORK_DIR}/asset.sha256" 2> /dev/null; then
-        UPSTREAM_SHA256=$(awk '{ print $1; exit }' "${WORK_DIR}/asset.sha256")
-    fi
-    if [[ -n "${UPSTREAM_SHA256}" ]]; then
-        ACTUAL_SHA256=$(sha256sum "${WORK_DIR}/kubescape" | awk '{ print $1 }')
-        if [[ "${ACTUAL_SHA256}" != "${UPSTREAM_SHA256}" ]]; then
-            echo "ERROR: ${ASSET_NAME} does not match the SHA-256 published with the release." >&2
-            exit 1
-        fi
-    else
-        echo "WARN: No upstream SHA-256 published for ${ASSET_NAME}; SHA-512 is unverified against the release." >&2
-    fi
-
-    CHECKSUM=$(sha512sum "${WORK_DIR}/kubescape" | awk '{ print $1 }')
-    echo "[\"${VERSION}:${ARCH}\"]=\"${CHECKSUM}\""
-    rm "${WORK_DIR}/kubescape"
+VERSION=""
+ARCHES=""
+UPSTREAM_CHECKSUM=""
+while getopts ':v:a:c:' flag; do
+    case "${flag}" in
+        v) VERSION=${OPTARG} ;;
+        a) ARCHES=${OPTARG} ;;
+        c) UPSTREAM_CHECKSUM=${OPTARG} ;;
+        *) hash_usage ;;
+    esac
 done
+VERSION=${VERSION#v}
+if [[ -z "${VERSION}" ]]; then
+    hash_usage
+fi
+if [[ ! "${VERSION}" =~ ^[0-9]+(\.[0-9]+){1,2}(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+    hash_die "Invalid version '${VERSION}'."
+fi
+ARCHES=${ARCHES:-${TOOL_ARCHES}}
+read -r -a ARCH_LIST <<< "${ARCHES}"
+if [[ "${#ARCH_LIST[@]}" -eq 0 ]]; then
+    hash_die "-a names no architecture. Supported: ${TOOL_ARCHES}."
+fi
+for arch in "${ARCH_LIST[@]}"; do
+    if [[ " ${TOOL_ARCHES} " != *" ${arch} "* ]]; then
+        hash_die "Unsupported architecture '${arch}'. Supported: ${TOOL_ARCHES}."
+    fi
+done
+if [[ -n "${UPSTREAM_CHECKSUM}" && "${UPSTREAM_CHECKSUM}" != "NONE" ]]; then
+    if [[ ! "${UPSTREAM_CHECKSUM}" =~ ^(SHA-256:[0-9a-f]{64}|SHA1:[0-9a-f]{40})$ ]]; then
+        hash_die "-c must be SHA-256:<hex>, SHA1:<hex>, or NONE."
+    fi
+    if [[ "${#ARCH_LIST[@]}" -gt 1 ]]; then
+        hash_die "-c describes one asset, so pick its architecture with -a."
+    fi
+fi
+REQUIRED_TOOLS=(curl sha256sum sha512sum tar gzip)
+if [[ "${UPSTREAM_CHECKSUM}" == SHA1:* ]]; then
+    REQUIRED_TOOLS+=(sha1sum)
+fi
+for tool in "${REQUIRED_TOOLS[@]}"; do
+    command -v "${tool}" > /dev/null || hash_die "${tool} is required."
+done
+
+HASH_WORK_DIR=$(mktemp -d)
+trap 'rm -rf "${HASH_WORK_DIR}"' EXIT
+
+# check_upstream VERSION ARCH ASSET: anchors ASSET to what the project
+# published, via verify_upstream (which returns 2 when nothing was published)
+# and any checksum supplied with -c.
+check_upstream() {
+    local rc=0 expected actual
+    if [[ "${UPSTREAM_CHECKSUM}" == "NONE" ]]; then
+        printf 'WARN: -c NONE: %s is not checked against any published checksum.\n' "${3##*/}" >&2
+        return 0
+    fi
+    (cd "${3%/*}" && verify_upstream "$1" "$2" "$3") >&2 || rc=$?
+    if [[ "${rc}" -ne 0 && "${rc}" -ne 2 ]]; then
+        hash_die "${3##*/} could not be verified against what ${TOOL_NAME} published for ${1}."
+    fi
+    if [[ -n "${UPSTREAM_CHECKSUM}" ]]; then
+        expected=${UPSTREAM_CHECKSUM#*:}
+        case "${UPSTREAM_CHECKSUM%%:*}" in
+            SHA-256) actual=$(sha256sum "$3" | awk '{ print $1 }') ;;
+            SHA1) actual=$(sha1sum "$3" | awk '{ print $1 }') ;;
+        esac
+        if [[ "${actual}" != "${expected}" ]]; then
+            hash_die "${3##*/} does not match the checksum given with -c (${actual})."
+        fi
+        printf 'ok: %s matches the checksum given with -c.\n' "${3##*/}" >&2
+    elif [[ "${rc}" -eq 2 ]]; then
+        hash_die "${TOOL_NAME} published no checksum for ${3##*/}. Supply one from another official source with -c," \
+            "or pass -c NONE to add the entry unanchored."
+    fi
+}
+
+ENTRIES=()
+for arch in "${ARCH_LIST[@]}"; do
+    # orb_extract works in ORB_WORK_DIR and names ORB_ASSET_NAME in messages.
+    ORB_WORK_DIR="${HASH_WORK_DIR}/${arch}"
+    ORB_ASSET_NAME=$(tool_asset_name "${VERSION}" "${arch}")
+    member=$(tool_archive_member "${VERSION}" "${arch}")
+    mkdir -p "${ORB_WORK_DIR}"
+    mapfile -t urls < <(tool_asset_urls "${VERSION}" "${arch}" "${ORB_ASSET_NAME}")
+    if ! orb_download "${ORB_WORK_DIR}/${ORB_ASSET_NAME}" "${urls[@]}" >&2; then
+        hash_die "Could not download ${ORB_ASSET_NAME}. If ${TOOL_NAME} ${VERSION} has no ${arch} build," \
+            "leave ${arch} out with -a."
+    fi
+    check_upstream "${VERSION}" "${arch}" "${ORB_WORK_DIR}/${ORB_ASSET_NAME}"
+    # Hashes the same file install.sh verifies, with the same checks on it.
+    if ! orb_extract "${ORB_WORK_DIR}/${ORB_ASSET_NAME}" "${member}" >&2; then
+        hash_die "Could not take ${member} from ${ORB_ASSET_NAME}."
+    fi
+    ENTRIES+=("$(printf '    ["%s/%s"]="%s"' "${VERSION}" "${arch}" "$(sha512sum "${ORB_VERIFIED_FILE}" | awk '{ print $1 }')")")
+done
+# Nothing is printed until every architecture has passed.
+printf '%s\n' "${ENTRIES[@]}"
+# <<< shared install_hash logic <<<
