@@ -173,14 +173,14 @@ Give `output_file` the extension that matches `output_format` so the report land
 
 ### `kubescape/install`
 
-Installs the Kubescape binary. Run it before any other command.
+Installs Kubescape for Linux on amd64 or arm64, matching the executor's CPU, after verifying its SHA-512 checksum. Run it before the orb's other commands. Needs bash 4 or newer on the executor.
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `version` | `4.0.15` | Kubescape release to install. Pin it so Kubescape only changes when you decide to. |
-| `install_path` | `/home/circleci/bin` | User-owned directory to install into (no trailing slash). Added to `PATH` for later steps when it isn't already on it. |
+| `version` | `4.0.15` | Kubescape release to install; a leading `v` is ignored. Pin it so Kubescape only changes when you decide to. Values that aren't a release version, such as `latest`, are rejected. |
+| `install_path` | `$HOME/bin` | Absolute path of the directory to install into, writable without root. Created if needed, and added to `PATH` for later steps when it isn't already on it. A leading `~/` is expanded. |
 | `verify_checksums` | `strict` | `strict`, `known_versions` or `false`. See [Checksum Verification](#-checksum-verification). |
-| `caching` | `true` | Cache the download between jobs, keyed by version and architecture. A cached binary is still verified. |
+| `caching` | `true` | Cache the verified release between jobs, keyed by version, CPU architecture and home directory. A cached release is verified again before it is installed. |
 
 ### `kubescape/helm_scan_framework`
 
@@ -196,12 +196,12 @@ Renders a Helm chart with `helm template` and scans it with a compliance framewo
 | `verbose` | `true` | Display all scanned resources, not only failed ones. |
 | `artifacts_path` | *(empty)* | Directory created with `kubescape download artifacts`. See [Running Offline](#-running-offline). |
 
-Path and namespace parameters expand environment variables, so values such as `$HOME/helm_charts/myservice-1.0.0.tgz` work.
+`version` and the path and namespace parameters expand environment variables, so values such as `$HOME/helm_charts/myservice-1.0.0.tgz` work.
 
 ## 🔒 Secure by Design
 
 - **Least Privilege**: Installs to a user-owned directory by default, with no `sudo` usage anywhere in this orb.
-- **Integrity**: Checksum validation of all downloaded binaries using SHA-512. Fails closed by default: a Kubescape version this orb has no checksum for is refused, not installed unverified. See [Checksum Verification](#-checksum-verification).
+- **Integrity**: Checksum validation of all downloaded binaries using SHA-512. Fails closed by default: a Kubescape version this orb has no checksum for is refused, not installed unverified, and a binary that can't run on the executor never replaces an existing install. See [Checksum Verification](#-checksum-verification).
 - **Provenance**: Installs directly from Kubescape's official [releases page](https://github.com/kubescape/kubescape/releases/) on GitHub. No third-party websites, domains, or proxies are used.
 - **Confidentiality**: All secrets and environment variables are handled in accordance with CircleCI's [security recommendations](https://circleci.com/docs/security-recommendations/) and [best practices](https://circleci.com/docs/orbs-best-practices/).
 - **Privacy**: No usage data of any kind is collected or shipped back to the orb developer.
@@ -335,7 +335,7 @@ With `artifacts_path` set, Kubescape loads the policies from that directory and 
 This is an unofficial, community-maintained orb, and contributions are welcome! Bug reports, feature ideas and pull requests all help.
 
 - **Found a bug or have an idea?** [Open an issue](https://github.com/juburr/kubescape-orb/issues).
-- **Need a newer Kubescape release?** Generate its checksums with `src/scripts/install_hash.sh -v <version>`, add them to the table in [`src/scripts/install.sh`](src/scripts/install.sh), and open a pull request.
+- **Need a newer Kubescape release?** Generate its checksums with `src/scripts/install_hash.sh -v <version>`, paste them into the `sha512sums` table in [`src/scripts/install.sh`](src/scripts/install.sh), and open a pull request. The script checks each asset against the checksums Kubescape publishes, and needs `cosign` for releases from 4.0.13 on, whose checksum lists are signed.
 
 ## 📜 License
 
