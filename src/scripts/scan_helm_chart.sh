@@ -4,23 +4,23 @@ set -e
 set +o history
 
 # Prepare orb parameters
-ARTIFACTS_PATH=$(printf '%s' "${PARAM_ARTIFACTS_PATH}" | circleci env subst)
-CHART_PATH=$(printf '%s' "${PARAM_CHART_PATH}" | circleci env subst)
+ARTIFACTS_DIR=$(printf '%s' "${PARAM_ARTIFACTS_DIR}" | circleci env subst)
+CHART=$(printf '%s' "${PARAM_CHART}" | circleci env subst)
 FRAMEWORK="${PARAM_FRAMEWORK}"
-NAMESPACE=$(printf '%s' "${PARAM_NAMESPACE}" | circleci env subst)
 OUTPUT_FILE=$(printf '%s' "${PARAM_OUTPUT_FILE}" | circleci env subst)
 OUTPUT_FORMAT="${PARAM_OUTPUT_FORMAT}"
+RELEASE_NAMESPACE=$(printf '%s' "${PARAM_RELEASE_NAMESPACE}" | circleci env subst)
 YAML_DIR="${HOME}/.local/share/kubescape-orb/yamls"
 VERBOSE=$(printf '%s' "${PARAM_VERBOSE}" | circleci env subst)
 
 # Print parameters for debugging purposes.
-echo "Running Kubescape framework scan..."
-echo "  ARTIFACTS_PATH: ${ARTIFACTS_PATH}"
-echo "  CHART_PATH: ${CHART_PATH}"
+echo "Running Kubescape Helm chart scan..."
+echo "  ARTIFACTS_DIR: ${ARTIFACTS_DIR}"
+echo "  CHART: ${CHART}"
 echo "  FRAMEWORK: ${FRAMEWORK}"
-echo "  NAMESPACE: ${NAMESPACE}"
 echo "  OUTPUT_FILE: ${OUTPUT_FILE}"
 echo "  OUTPUT_FORMAT: ${OUTPUT_FORMAT}"
+echo "  RELEASE_NAMESPACE: ${RELEASE_NAMESPACE}"
 echo "  YAML_DIR: ${YAML_DIR}"
 echo "  VERBOSE: ${VERBOSE}"
 
@@ -35,20 +35,20 @@ fi
 # version-check.ks-services.co, which stalls for about a minute on networks
 # that silently drop connections.
 ARTIFACTS_ARG=()
-if [[ -n "${ARTIFACTS_PATH}" ]]; then
-    if [[ ! -d "${ARTIFACTS_PATH}" ]]; then
-        echo "ERROR: artifacts_path '${ARTIFACTS_PATH}' is not a directory. Create it with 'kubescape download artifacts --output <dir>'."
+if [[ -n "${ARTIFACTS_DIR}" ]]; then
+    if [[ ! -d "${ARTIFACTS_DIR}" ]]; then
+        echo "ERROR: artifacts_dir '${ARTIFACTS_DIR}' is not a directory. Create it with 'kubescape download artifacts --output <dir>'."
         exit 1
     fi
-    ARTIFACTS_ARG=(--use-artifacts-from "${ARTIFACTS_PATH}")
+    ARTIFACTS_ARG=(--use-artifacts-from "${ARTIFACTS_DIR}")
     export KS_SKIP_UPDATE_CHECK=true
 fi
 
 # Kubescape takes Kubernetes YAML files as input, but we just have a
-# Helm chart (.tar.gz file) at this point. Run the template command to
-# transform it into a single YAML file.
+# Helm chart at this point. Run the template command to render it into a
+# single YAML file. The namespace only sets .Release.Namespace.
 mkdir -p "${YAML_DIR}"
-helm template "${CHART_PATH}" -n "${NAMESPACE}" > "${YAML_DIR}/chart.yaml"
+helm template "${CHART}" -n "${RELEASE_NAMESPACE}" > "${YAML_DIR}/chart.yaml"
 
 # Scan the YAML file using Kubescape. Stdin is redirected because Kubescape 4.x
 # panics while printing verbose results when stdin is a terminal, as it is in

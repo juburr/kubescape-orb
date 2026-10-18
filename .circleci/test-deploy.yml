@@ -20,7 +20,7 @@ release-filters: &release-filters
     only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
 
 commands:
-  # Packages the chart from `helm create` for helm_scan_framework tests. Installs
+  # Packages the chart from `helm create` for scan_helm_chart tests. Installs
   # a pinned, checksum-verified Helm first when the executor doesn't ship one,
   # outside the orb's default install path so tests still prove that the install
   # command puts kubescape on PATH by itself.
@@ -60,8 +60,8 @@ commands:
       output_file:
         type: string
     steps:
-      - kubescape-orb/helm_scan_framework:
-          chart_path: /home/circleci/charts/myservice-0.1.0.tgz
+      - kubescape-orb/scan_helm_chart:
+          chart: /home/circleci/charts/myservice-0.1.0.tgz
           framework: << parameters.framework >>
           output_file: /home/circleci/results/<< parameters.output_file >>
           output_format: << parameters.output_format >>
@@ -97,15 +97,15 @@ jobs:
             test "$(uname -m)" = "aarch64"
             command -v kubescape
             kubescape version
-      - kubescape-orb/helm_scan_framework:
-          chart_path: /home/circleci/charts/myservice-0.1.0.tgz
+      - kubescape-orb/scan_helm_chart:
+          chart: /home/circleci/charts/myservice-0.1.0.tgz
           framework: nsa
           output_file: /home/circleci/results/nsa.json
           output_format: json
       - run:
           name: Verify Scan Results
           command: jq -e '.summaryDetails.frameworks | map(.name) | index("NSA")' /home/circleci/results/nsa.json
-  # Runs helm_scan_framework with the frameworks and output formats pipelines
+  # Runs scan_helm_chart with the frameworks and output formats pipelines
   # use most, on each supported Kubescape major version. The chart has failing
   # controls, so every scan step passing also shows scans don't gate by default.
   helm-scan-test:
@@ -148,7 +148,7 @@ jobs:
       - store_artifacts:
           path: /home/circleci/results
   # Scans with network access blocked, using artifacts downloaded beforehand
-  # through the artifacts_path parameter, as documented under Running Offline.
+  # through the artifacts_dir parameter, as documented under Running Offline.
   helm-scan-offline-test:
     parameters:
       version:
@@ -177,16 +177,16 @@ jobs:
               echo "github.com is still reachable"
               exit 1
             fi
-      - kubescape-orb/helm_scan_framework:
-          artifacts_path: /home/circleci/kubescape-artifacts
-          chart_path: /home/circleci/charts/myservice-0.1.0.tgz
+      - kubescape-orb/scan_helm_chart:
+          artifacts_dir: /home/circleci/kubescape-artifacts
+          chart: /home/circleci/charts/myservice-0.1.0.tgz
           framework: nsa
           output_file: /home/circleci/results/nsa.json
           output_format: json
       # Its image signature controls try to reach the registry and must not fail the scan.
-      - kubescape-orb/helm_scan_framework:
-          artifacts_path: /home/circleci/kubescape-artifacts
-          chart_path: /home/circleci/charts/myservice-0.1.0.tgz
+      - kubescape-orb/scan_helm_chart:
+          artifacts_dir: /home/circleci/kubescape-artifacts
+          chart: /home/circleci/charts/myservice-0.1.0.tgz
           framework: all
           output_file: /home/circleci/results/all.json
           output_format: json

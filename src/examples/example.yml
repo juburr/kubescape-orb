@@ -1,6 +1,6 @@
 description: >
   The `install` command is used to simplify installation of Kubescape. Pin `version` so Kubescape only
-  changes when you choose to; `helm_scan_framework` then scans a packaged Helm chart.
+  changes when you choose to; `scan_helm_chart` then scans a packaged Helm chart.
 
 usage:
   version: 2.1
@@ -11,15 +11,15 @@ usage:
   jobs:
     build-images:
       docker:
-        # helm_scan_framework needs Helm, which cimg/deploy includes.
+        # scan_helm_chart needs Helm, which cimg/deploy includes.
         - image: cimg/deploy:2026.10
       steps:
         - attach_workspace:
             at: /home/circleci/project/helm_charts
         - kubescape/install:
             version: "4.0.15"
-        - kubescape/helm_scan_framework:
-            chart_path: /home/circleci/project/helm_charts/myservice-1.0.0.tgz
+        - kubescape/scan_helm_chart:
+            chart: /home/circleci/project/helm_charts/myservice-1.0.0.tgz
             framework: nsa
             output_file: myservice_nsa_scan.json
             output_format: json
