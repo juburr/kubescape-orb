@@ -1,17 +1,21 @@
 description: >
-  Scans a helm chart using one or more frameworks for compliance to security controls.
+  Renders a Helm chart with `helm template` and scans the resulting Kubernetes resources against one Kubescape
+  framework's security controls. Requires Helm on the PATH.
 parameters:
-  artifacts_path:
+  artifacts_dir:
     type: string
     default: ""
     description: >
       Directory of Kubescape artifacts created with `kubescape download artifacts --output <dir>`. When set,
       frameworks, control inputs, exceptions and attack tracks are loaded from it (--use-artifacts-from)
       instead of being downloaded, and Kubescape's update check is skipped, so the scan needs no network
-      access. Leave empty to download them at scan time.
-  chart_path:
+      access. Leave empty to download them at scan time. Environment variables are expanded.
+  chart:
     type: string
-    description: "Helm chart to scan."
+    description: >
+      Helm chart to scan: anything `helm template` accepts, such as a chart directory, a packaged chart (.tgz
+      file), a repo/chart reference to a repository added with `helm repo add`, or an oci:// URL. Environment
+      variables are expanded.
   framework:
     type: enum
     enum:
@@ -38,10 +42,6 @@ parameters:
       applies to Kubescape 3.x and 4.x. "agentruntimehardening" only covers Agent Sandbox resources
       (Sandbox, SandboxTemplate, WorkerPool); for charts without them Kubescape exits non-zero with
       "no resources found to scan".
-  namespace:
-    type: string
-    default: kubescape-orb
-    description: "Namespace to use when generating YAML files from Helm chart."
   output_file:
     type: string
     description: >
@@ -72,19 +72,28 @@ parameters:
       (cyclonedx-json, spdx-json) are omitted because this command does not scan container images.
       Kubescape 3.x only supports pretty-printer, json, junit, prometheus, pdf, html and sarif; for the other
       formats it silently writes pretty-printer output.
+  release_namespace:
+    type: string
+    default: kubescape-orb
+    description: >
+      Namespace passed to `helm template` (--namespace), which only sets .Release.Namespace while the chart is
+      rendered. Nothing is deployed. Environment variables are expanded.
   verbose:
     type: boolean
     default: true
-    description: "Display all scanned resources, not only failed ones."
+    description: >
+      Include passed resources and controls in the report, not only failed ones (Kubescape's --verbose). It does
+      not change Kubescape's log level. Kubescape 4.x writes passed resources to JSON reports either way. Defaults
+      to true, unlike Kubescape itself, which reports only failures unless --verbose is given.
 steps:
   - run:
       environment:
-        PARAM_ARTIFACTS_PATH: << parameters.artifacts_path >>
-        PARAM_CHART_PATH: << parameters.chart_path >>
+        PARAM_ARTIFACTS_DIR: << parameters.artifacts_dir >>
+        PARAM_CHART: << parameters.chart >>
         PARAM_FRAMEWORK: << parameters.framework >>
-        PARAM_NAMESPACE: << parameters.namespace >>
         PARAM_OUTPUT_FILE: << parameters.output_file >>
         PARAM_OUTPUT_FORMAT: << parameters.output_format >>
+        PARAM_RELEASE_NAMESPACE: << parameters.release_namespace >>
         PARAM_VERBOSE: << parameters.verbose >>
       name: Scan Helm Chart
-      command: <<include(scripts/helm_scan_framework.sh)>>
+      command: <<include(scripts/scan_helm_chart.sh)>>

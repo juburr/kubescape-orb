@@ -38,7 +38,7 @@ NSA-CISA, MITRE, SOC 2, CIS benchmarks for EKS, AKS, GKE and upstream Kubernetes
 </td>
 <td width="33%" valign="top">
 ⚓ <b>Helm-native</b><br><br>
-Hand it a packaged chart. The orb renders it with <code>helm template</code> and scans every resource it produces.
+Hand it a chart directory, a packaged <code>.tgz</code>, a <code>repo/chart</code> reference or an <code>oci://</code> URL. The orb renders it with <code>helm template</code> and scans every resource it produces.
 </td>
 <td width="33%" valign="top">
 📊 <b>Reports your tooling speaks</b><br><br>
@@ -56,7 +56,7 @@ Picks the right Kubescape build for x86_64 executors and CircleCI Arm resource c
 </td>
 <td width="33%" valign="top">
 📡 <b>Air-gap friendly</b><br><br>
-Point <code>artifacts_path</code> at pre-downloaded policies and scans need no network access at all.
+Point <code>artifacts_dir</code> at pre-downloaded policies and scans of a local chart need no network access at all.
 </td>
 </tr>
 </table>
@@ -68,7 +68,7 @@ flowchart LR
     gh["GitHub release"] --> sha{"SHA-512<br/>verified?"}
     sha -- yes --> bin["kubescape<br/>on PATH"]
     sha -- no --> stop["install fails"]
-    chart["Helm chart<br/>.tgz"] --> tpl["helm template"]
+    chart["Helm chart"] --> tpl["helm template"]
     tpl --> scan["kubescape scan<br/>framework"]
     bin --> scan
     scan --> report["Report<br/>JSON · SARIF · JUnit · HTML"]
@@ -83,7 +83,7 @@ flowchart LR
     class stop bad
 ```
 
-`kubescape/install` downloads Kubescape straight from its official GitHub releases, verifies its SHA-512 checksum in the default `strict` mode shown here, and puts it on `PATH`. See [Checksum Verification](#-checksum-verification) for the other modes. `kubescape/helm_scan_framework` renders your chart and scans it with the framework you choose.
+`kubescape/install` downloads Kubescape straight from its official GitHub releases, verifies its SHA-512 checksum in the default `strict` mode shown here, and puts it on `PATH`. See [Checksum Verification](#-checksum-verification) for the other modes. `kubescape/scan_helm_chart` renders your chart and scans it with the framework you choose.
 
 ## 🚀 Quick Start
 
@@ -98,15 +98,15 @@ orbs:
 jobs:
   helm_scan:
     docker:
-      # helm_scan_framework needs Helm on PATH; cimg/deploy includes it, cimg/base does not.
+      # scan_helm_chart needs Helm on PATH; cimg/deploy includes it, cimg/base does not.
       - image: cimg/deploy:2026.10
     steps:
       - checkout
       - run: helm package charts/myservice --destination /home/circleci/helm_charts
       - kubescape/install:
           version: "4.0.15"
-      - kubescape/helm_scan_framework:
-          chart_path: /home/circleci/helm_charts/myservice-1.0.0.tgz
+      - kubescape/scan_helm_chart:
+          chart: /home/circleci/helm_charts/myservice-1.0.0.tgz
           framework: nsa
           output_file: myservice_nsa_scan.json
           output_format: json
@@ -119,7 +119,10 @@ workflows:
       - helm_scan
 ```
 
-Swap in your chart's path and version, push, and the report shows up under the job's **Artifacts** tab. Building the chart in an earlier job instead? Save it with `persist_to_workspace` and `attach_workspace` before the scan, as the [offline example](#-running-offline) does.
+Swap in your chart, push, and the report shows up under the job's **Artifacts** tab. `chart` takes anything `helm template` does: a chart directory, a packaged `.tgz`, a `repo/chart` reference or an `oci://` URL. Building the chart in an earlier job instead? Save it with `persist_to_workspace` and `attach_workspace` before the scan, as the [offline example](#-running-offline) does.
+
+> [!TIP]
+> Upgrading from `helm_scan_framework`? The next release renames it and three of its parameters. See [Upgrading](#-upgrading).
 
 > [!TIP]
 > This example uses the NSA framework for demonstration purposes, but many organizations will elect to use `all` (the default, if `framework` isn't supplied).
@@ -129,7 +132,7 @@ Swap in your chart's path and version, push, and the report shows up under the j
 
 ## 🧭 Frameworks
 
-Set `framework` on `helm_scan_framework` to any of these. Names match `kubescape list frameworks`, which also prints each framework's description.
+Set `framework` on `scan_helm_chart` to any of these. Names match `kubescape list frameworks`, which also prints each framework's description.
 
 | `framework` | What it checks |
 | --- | --- |
@@ -183,21 +186,34 @@ Installs Kubescape for Linux on amd64 or arm64, matching the executor's CPU, aft
 | `verify_checksums` | `strict` | `strict`, `known_versions` or `false`. See [Checksum Verification](#-checksum-verification). |
 | `caching` | `true` | Cache the verified release between jobs, keyed by version, CPU architecture and home directory. A cached release is verified again before it is installed. |
 
-### `kubescape/helm_scan_framework`
+### `kubescape/scan_helm_chart`
 
-Renders a Helm chart with `helm template` and scans it with a compliance framework. Needs Helm on the executor's `PATH`.
+Renders a Helm chart with `helm template` and scans the resulting Kubernetes resources against one Kubescape framework's security controls. Needs Helm on the executor's `PATH`.
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `chart_path` | *required* | Helm chart to scan, such as a packaged `.tgz`. |
-| `output_file` | *required* | Where to write the report. Use the extension that matches `output_format`. |
-| `framework` | `all` | See [Frameworks](#-frameworks). |
-| `output_format` | `json` | See [Output Formats](#-output-formats). |
-| `namespace` | `kubescape-orb` | Namespace to use when generating YAML from the chart. |
-| `verbose` | `true` | Display all scanned resources, not only failed ones. |
-| `artifacts_path` | *(empty)* | Directory created with `kubescape download artifacts`. See [Running Offline](#-running-offline). |
+| `chart` | *required* | Chart to scan: anything `helm template` accepts, such as a chart directory, a packaged `.tgz` file, a `repo/chart` reference, or an `oci://` URL. |
+| `output_file` | *required* | Path of the report file. Use the extension that matches `output_format`. |
+| `framework` | `all` | The one framework to scan with. See [Frameworks](#-frameworks). |
+| `output_format` | `json` | Report format, Kubescape's `--format`. See [Output Formats](#-output-formats). |
+| `release_namespace` | `kubescape-orb` | Namespace passed to `helm template`, which only sets `.Release.Namespace` while rendering. Nothing is deployed. |
+| `verbose` | `true` | Include passed resources and controls in the report, not only failed ones (Kubescape's `--verbose`, which is off by default in Kubescape itself). It doesn't change the log level. |
+| `artifacts_dir` | *(empty)* | Directory created with `kubescape download artifacts --output <dir>`, to scan without downloading policies. See [Running Offline](#-running-offline). |
 
-`version` and the path and namespace parameters expand environment variables, so values such as `$HOME/helm_charts/myservice-1.0.0.tgz` work.
+Environment variables are expanded in `install`'s `version` and `install_path`, and in `scan_helm_chart`'s `chart`, `output_file`, `release_namespace` and `artifacts_dir`.
+
+## 📦 Upgrading
+
+The next release renames the scan command and three of its parameters. Update your config as follows:
+
+| Old | New |
+| --- | --- |
+| `helm_scan_framework` command | `scan_helm_chart` command |
+| `helm_scan_framework.chart_path` | `scan_helm_chart.chart` |
+| `helm_scan_framework.namespace` | `scan_helm_chart.release_namespace` |
+| `helm_scan_framework.artifacts_path` | `scan_helm_chart.artifacts_dir` |
+
+`framework`, `output_file`, `output_format` and `verbose` keep their names and behavior.
 
 ## 🔒 Secure by Design
 
@@ -205,7 +221,7 @@ Renders a Helm chart with `helm template` and scans it with a compliance framewo
 - **Integrity**: SHA-512 checksum validation of downloaded binaries. Fails closed by default: a Kubescape version this orb has no checksum for is refused, not installed unverified, and a binary that can't run on the executor never replaces an existing install. See [Checksum Verification](#-checksum-verification) for the `known_versions` and `false` opt-outs.
 - **Provenance**: Installs directly from Kubescape's official [releases page](https://github.com/kubescape/kubescape/releases/) on GitHub. No third-party websites, domains, or proxies are used.
 - **Confidentiality**: All secrets and environment variables are handled in accordance with CircleCI's [security recommendations](https://circleci.com/docs/security-recommendations/) and [best practices](https://circleci.com/docs/orbs-best-practices/).
-- **Privacy**: No usage data of any kind is collected or shipped back to the orb developer. Kubescape itself is a separate matter: its update check sends details such as its version, the framework being scanned and the scan context to `version-check.ks-services.co` unless `KS_SKIP_UPDATE_CHECK` is `"true"` or `artifacts_path` is set, and Kubescape 4.x exports OpenTelemetry traces and metrics when the job sets `OTEL_EXPORTER_OTLP_ENDPOINT`. See [Network Access](#-network-access).
+- **Privacy**: No usage data of any kind is collected or shipped back to the orb developer. Kubescape itself is a separate matter: its update check sends details such as its version, the framework being scanned and the scan context to `version-check.ks-services.co` unless `KS_SKIP_UPDATE_CHECK` is `"true"` or `artifacts_dir` is set, and Kubescape 4.x exports OpenTelemetry traces and metrics when the job sets `OTEL_EXPORTER_OTLP_ENDPOINT`. See [Network Access](#-network-access).
 
 > [!IMPORTANT]
 > **Info for security teams:** see [Network Access](#-network-access) for the hosts to allow on locked-down or self-hosted runners, and [Running Offline](#-running-offline) for scanning without network access.
@@ -214,7 +230,7 @@ Renders a Helm chart with `helm template` and scans it with a compliance framewo
 
 v0.4.0 of this orb changed the default Kubescape `version` from 3.0.38 to 4.0.15, a new major version. Pin `version` on the `install` command, as in the [Quick Start](#-quick-start), so Kubescape only changes when you decide to rather than whenever the orb is upgraded.
 
-CI runs `helm_scan_framework` with Kubescape 3.0.38 and 4.0.15 on amd64, and installs and scans with both on arm64. Both versions accept the same flags and framework names. Both exit 0 when controls fail, since this orb doesn't pass a compliance or severity threshold, and exit non-zero on errors: an unknown framework, a failed policy download, or a chart with no resources the framework covers. Differences that matter when moving from 3.x to 4.x:
+CI runs `scan_helm_chart` with Kubescape 3.0.38 and 4.0.15 on amd64, and installs and scans with both on arm64. Both versions accept the same flags and framework names. Both exit 0 when controls fail, since this orb doesn't pass a compliance or severity threshold, and exit non-zero on errors: an unknown framework, a failed policy download, or a chart with no resources the framework covers. Differences that matter when moving from 3.x to 4.x:
 
 | | Kubescape 3.x | Kubescape 4.x |
 | --- | --- | --- |
@@ -222,10 +238,10 @@ CI runs `helm_scan_framework` with Kubescape 3.0.38 and 4.0.15 on amd64, and ins
 | SARIF output | Valid, but contains no results for scanned charts | Includes results |
 | `output_file` extension | Appended when missing for `json`, `junit` (`.xml`), `sarif`, `html` and `pdf` | Appended when missing for every format, e.g. `.txt` for `pretty-printer` and `prometheus` |
 | JSON report | Baseline | Same `summaryDetails` structure; adds `namespaceSummaries`, drops `jobID`, `paginationInfo` and `customerGUIDGenerated` |
-| `--verbose` with a terminal on stdin (as in CircleCI steps) | Works | Panics while printing results (exit 2). `helm_scan_framework` runs Kubescape with stdin redirected from `/dev/null`, so it is unaffected; do the same if you run `kubescape scan --verbose` in your own steps. |
+| `--verbose` with a terminal on stdin (as in CircleCI steps) | Works | Panics while printing results (exit 2). `scan_helm_chart` runs Kubescape with stdin redirected from `/dev/null`, so it is unaffected; do the same if you run `kubescape scan --verbose` in your own steps. |
 | Network access during scans | GitHub, to download policies | GitHub, plus `tuf-repo-cdn.sigstore.dev`: 4.x verifies downloaded policies with Sigstore and fails the scan if it can't |
 
-Give `output_file` the extension that matches `output_format` (see [Output Formats](#-output-formats)) so the report lands at exactly that path on either version. The `cis-eks-t1.2.0` and `cis-v1.23-t1.0.1` frameworks have been removed from Kubescape's policy library and fail on every Kubescape version, so `helm_scan_framework` no longer accepts them.
+Give `output_file` the extension that matches `output_format` (see [Output Formats](#-output-formats)) so the report lands at exactly that path on either version. The `cis-eks-t1.2.0` and `cis-v1.23-t1.0.1` frameworks have been removed from Kubescape's policy library and fail on every Kubescape version, so `scan_helm_chart` no longer accepts them.
 
 ## 💻 Supported Platforms
 
@@ -250,14 +266,14 @@ The table covers every Kubescape release this orb version knows about, including
 
 ## 🌐 Network Access
 
-Hosts to allow (HTTPS, port 443) when running on a locked-down or self-hosted runner. They were confirmed by recording every connection Kubescape 3.0.38 and 4.0.15 made during `install` and `helm_scan_framework`.
+Hosts to allow (HTTPS, port 443) when running on a locked-down or self-hosted runner. They were confirmed by recording every connection Kubescape 3.0.38 and 4.0.15 made during `install` and `scan_helm_chart`.
 
 | Host | Needed by | Purpose |
 | --- | --- | --- |
-| `github.com` | `install`, `helm_scan_framework` | Kubescape release download; at scan time, policy downloads from [kubescape/regolibrary](https://github.com/kubescape/regolibrary/releases) releases |
-| `release-assets.githubusercontent.com` | `install`, `helm_scan_framework` | Where GitHub redirects release downloads |
-| `objects.githubusercontent.com` | `install`, `helm_scan_framework` | GitHub's previous redirect target for release downloads; allow it as well so a change on GitHub's side doesn't break downloads |
-| `tuf-repo-cdn.sigstore.dev` | `helm_scan_framework` with Kubescape 4.x | Sigstore trust root used to verify the downloaded policies' signatures. **Required:** when it is blocked, 4.x scans fail with `checksum verification failed ... failed to fetch Sigstore trusted root` |
+| `github.com` | `install`, `scan_helm_chart` | Kubescape release download; at scan time, policy downloads from [kubescape/regolibrary](https://github.com/kubescape/regolibrary/releases) releases |
+| `release-assets.githubusercontent.com` | `install`, `scan_helm_chart` | Where GitHub redirects release downloads |
+| `objects.githubusercontent.com` | `install`, `scan_helm_chart` | GitHub's previous redirect target for release downloads; allow it as well so a change on GitHub's side doesn't break downloads |
+| `tuf-repo-cdn.sigstore.dev` | `scan_helm_chart` with Kubescape 4.x | Sigstore trust root used to verify the downloaded policies' signatures. **Required:** when it is blocked, 4.x scans fail with `checksum verification failed ... failed to fetch Sigstore trusted root` |
 
 Optional hosts. Kubescape carries on without them:
 
@@ -266,11 +282,11 @@ Optional hosts. Kubescape carries on without them:
 | `version-check.ks-services.co` | Kubescape's update check, on every scan | Set `KS_SKIP_UPDATE_CHECK: "true"` in the job's `environment` to turn it off. Where egress is silently dropped rather than rejected, it adds about a minute to each scan. |
 | Registries of the chart's container images (e.g. `index.docker.io`, `auth.docker.io`) | Image signature controls in the `all`, `allcontrols` and `armobest` frameworks | Other frameworks don't contact registries |
 
-`helm_scan_framework` runs `helm template` on a packaged chart, which needs no network access. The orb doesn't install Helm, so `get.helm.sh` isn't needed unless you install Helm yourself.
+`scan_helm_chart` renders the chart with `helm template`, which needs no network access for a chart directory or `.tgz` file. A `repo/chart` or `oci://` chart is downloaded from its chart repository or registry, so allow that host too. The orb doesn't install Helm, so `get.helm.sh` isn't needed unless you install Helm yourself.
 
 ## 📡 Running Offline
 
-`helm_scan_framework` only needs the network to download Kubescape's policies (frameworks, control inputs, exceptions and attack tracks). To scan without network access, download them where access is available and pass the directory as `artifacts_path`:
+`scan_helm_chart` only needs the network to download Kubescape's policies (frameworks, control inputs, exceptions and attack tracks), and the chart itself when it comes from a chart repository or registry. To scan a local chart without network access, download the policies where access is available and pass the directory as `artifacts_dir`:
 
 ```yaml
 jobs:
@@ -307,9 +323,9 @@ jobs:
       # Downloads from GitHub; see below for runners with no route to it.
       - kubescape/install:
           version: "4.0.15"
-      - kubescape/helm_scan_framework:
-          artifacts_path: /home/circleci/kubescape-artifacts
-          chart_path: /home/circleci/helm_charts/myservice-1.0.0.tgz
+      - kubescape/scan_helm_chart:
+          artifacts_dir: /home/circleci/kubescape-artifacts
+          chart: /home/circleci/helm_charts/myservice-1.0.0.tgz
           framework: nsa
           output_file: myservice_nsa_scan.json
           output_format: json
@@ -327,7 +343,7 @@ workflows:
             - download_kubescape_artifacts
 ```
 
-With `artifacts_path` set, Kubescape loads the policies from that directory and skips its update check, so the scan opens no network connections. The exception is `all`, `allcontrols` and `armobest`, whose image signature controls still try to reach container registries and carry on when they can't. Download the artifacts with the same Kubescape version that scans, and refresh them regularly, since stale artifacts mean stale controls. You can also commit the directory to your repository instead of using a workspace.
+With `artifacts_dir` set, Kubescape loads the policies from that directory and skips its update check, so scanning a chart directory or `.tgz` file opens no network connections. The exception is `all`, `allcontrols` and `armobest`, whose image signature controls still try to reach container registries and carry on when they can't. Download the artifacts with the same Kubescape version that scans, and refresh them regularly, since stale artifacts mean stale controls. You can also commit the directory to your repository instead of using a workspace.
 
 `install` itself downloads Kubescape from GitHub. On a runner with no route to GitHub at all, bake Kubescape into the executor image instead, after checking its SHA-512 against the table in [`src/scripts/install.sh`](src/scripts/install.sh), and skip `install`.
 
