@@ -75,6 +75,10 @@ The next release renames the scan command and three of its parameters. Update yo
 
 `framework`, `output_file`, `output_format` and `verbose` keep their names and behavior.
 
+Behavior changes:
+- `scan_helm_chart` renders the chart into a private temporary directory, removed when the step ends even if the scan fails, instead of `~/.local/share/kubescape-orb/yamls/chart.yaml`, which a failed scan left behind. Reports name the rendered file by its new path.
+- Error and warning messages go to stderr.
+
 ## Kubescape Versions
 
 v0.4.0 of this orb changed the default Kubescape `version` from 3.0.38 to 4.0.15, a new major version. Pin `version` on the `install` command, as in the example above, so Kubescape only changes when you decide to rather than whenever the orb is upgraded.
