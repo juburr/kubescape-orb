@@ -196,7 +196,8 @@ jobs:
             jq -e '.summaryDetails.frameworks | map(.name) | index("NSA")' /home/circleci/results/nsa.json
             jq -e '.summaryDetails.frameworks | length > 1' /home/circleci/results/all.json
   # The install contract runs in the setup workflow (config.yml); this checks
-  # that parameter values reach circleci env subst on stdin.
+  # that parameter values reach circleci env subst on stdin, and that the
+  # scripts follow the shell conventions shared by the juburr orbs.
   env-subst-test:
     docker:
       - image: cimg/base:current-22.04
@@ -205,6 +206,19 @@ jobs:
       - run:
           name: Test that parameter values reach circleci env subst on stdin
           command: bash tests/env_subst_test.sh
+      - run:
+          name: Run shell conventions test
+          command: bash tests/shell_conventions_test.sh
+  # Runs scan_helm_chart.sh against stand-ins for helm and kubescape: the rendered chart must be
+  # removed even when the scan fails, and errors and warnings must go to stderr.
+  scan-script-test:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - checkout
+      - run:
+          name: Run scan_helm_chart script tests
+          command: bash tests/scan_helm_chart_test.sh
 
 workflows:
   test-deploy:
@@ -214,6 +228,8 @@ workflows:
       - command-test:
           filters: *filters
       - env-subst-test:
+          filters: *filters
+      - scan-script-test:
           filters: *filters
       # Covers both release asset naming schemes (3.0.46 and earlier, 3.0.47 and later).
       - command-test-arm64:
@@ -244,6 +260,7 @@ workflows:
             - orb-tools/pack
             - command-test
             - env-subst-test
+            - scan-script-test
             - command-test-arm64
             - helm-scan-test
             - helm-scan-offline-test

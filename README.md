@@ -215,6 +215,10 @@ The next release renames the scan command and three of its parameters. Update yo
 
 `framework`, `output_file`, `output_format` and `verbose` keep their names and behavior.
 
+Behavior changes:
+- `scan_helm_chart` renders the chart into a private temporary directory, removed when the step ends even if the scan fails, instead of `~/.local/share/kubescape-orb/yamls/chart.yaml`, which a failed scan left behind. Reports name the rendered file by its new path.
+- Error and warning messages go to stderr.
+
 ## 🔒 Secure by Design
 
 - **Least Privilege**: Installs to a user-owned directory by default, with no `sudo` usage anywhere in this orb.
