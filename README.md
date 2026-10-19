@@ -102,7 +102,7 @@ Add the orb, install Kubescape, scan your chart. Copy this into `.circleci/confi
 version: 2.1
 
 orbs:
-  kubescape: juburr/kubescape-orb@latest
+  kubescape: juburr/kubescape-orb@1.0.0
 
 jobs:
   helm_scan:
@@ -131,7 +131,7 @@ workflows:
 Swap in your chart, push, and the report shows up under the job's **Artifacts** tab. `chart` takes anything `helm template` does: a chart directory, a packaged `.tgz`, a `repo/chart` reference or an `oci://` URL. Building the chart in an earlier job instead? Save it with `persist_to_workspace` and `attach_workspace` before the scan, as the [offline example](#-running-offline) does.
 
 > [!TIP]
-> Upgrading from `helm_scan_framework`? The next release renames it and three of its parameters. See [Upgrading](#-upgrading).
+> Upgrading from `helm_scan_framework`? v1.0.0 renames it and three of its parameters. See [Upgrading](#-upgrading).
 
 > [!TIP]
 > This example uses the NSA framework for demonstration purposes, but many organizations will elect to use `all` (the default, if `framework` isn't supplied).
@@ -230,7 +230,7 @@ Environment variables are expanded in `install`'s `version` and `install_path`, 
 
 ## 📦 Upgrading
 
-The next release renames the scan command and three of its parameters. Update your config as follows:
+v1.0.0 renames the scan command and three of its parameters. Update your config as follows:
 
 | Old | New |
 | --- | --- |
@@ -277,7 +277,7 @@ The `install` command checks the downloaded Kubescape binary against a SHA-512 l
 The table covers every Kubescape release this orb version knows about, including the default `version`. If you pin a Kubescape release newer than this orb, `strict` fails until the orb is upgraded. Upgrade the orb (or open a PR adding the checksum, generated with `src/scripts/install_hash.sh`) rather than opting out. `known_versions` and `false` remain available for cases where you accept running an unverified binary.
 
 > [!WARNING]
-> **Changed in v0.5.0:** the default was previously `known_versions`, which installed unlisted versions without verification. Pipelines that pin a Kubescape version newer than the orb's table now fail until they upgrade the orb or set `verify_checksums: known_versions` explicitly.
+> **Changed in v1.0.0:** the default was previously `known_versions`, which installed unlisted versions without verification. Pipelines that pin a Kubescape version newer than the orb's table now fail until they upgrade the orb or set `verify_checksums: known_versions` explicitly.
 
 ## 🌐 Network Access
 
