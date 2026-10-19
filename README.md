@@ -12,7 +12,7 @@ Strict SHA-512 verification by default · No `sudo` · No usage data collected b
 
 [![CircleCI Build Status](https://circleci.com/gh/juburr/kubescape-orb.svg?style=shield "CircleCI Build Status")](https://circleci.com/gh/juburr/kubescape-orb)
 [![CircleCI Orb Version](https://badges.circleci.com/orbs/juburr/kubescape-orb.svg)](https://circleci.com/developer/orbs/orb/juburr/kubescape-orb)
-[![GitHub License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](https://raw.githubusercontent.com/juburr/kubescape-orb/master/LICENSE)
+[![GitHub License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 [![CircleCI Community](https://img.shields.io/badge/community-CircleCI%20Discuss-343434.svg)](https://discuss.circleci.com/c/ecosystem/orbs)
 
 ![Kubescape 3.x and 4.x](https://img.shields.io/badge/Kubescape-3.x%20%7C%204.x-7C3AED?style=for-the-badge&logo=kubernetes&logoColor=white)
@@ -60,6 +60,15 @@ Point <code>artifacts_dir</code> at pre-downloaded policies and scans of a local
 </td>
 </tr>
 </table>
+
+### 🧩 The Orb vs. a Hand-Rolled Script
+
+| | Scripting Kubescape yourself | With the orb |
+| --- | --- | --- |
+| **Installing Kubescape** | Download a release from GitHub, then find and check its checksum yourself | `kubescape/install` checks a SHA-512 from a built-in table for amd64 and arm64, fails closed on unknown versions, and caches the release |
+| **Scanning a chart** | Render it with `helm template`, scan the output, and delete the rendered manifests, which can hold Secret values, even when the scan fails | `scan_helm_chart` renders into a private temporary directory that is removed when the step ends, pass or fail |
+| **Verbose reports on Kubescape 4.x** | `kubescape scan --verbose` panics while printing results when stdin is a terminal, as it is in CircleCI steps | `scan_helm_chart` runs Kubescape with stdin redirected from `/dev/null` |
+| **Scanning offline** | Pass `--use-artifacts-from`, and set `KS_SKIP_UPDATE_CHECK` so the update check doesn't stall the scan where egress is silently dropped | `artifacts_dir` does both |
 
 ## 🔄 How It Works
 
@@ -173,6 +182,23 @@ Give `output_file` the extension that matches `output_format` so the report land
 
 ➖ Kubescape 3.x silently writes pretty-printer output for these formats.
 
+## 🔢 Kubescape Versions
+
+v0.4.0 of this orb changed the default Kubescape `version` from 3.0.38 to 4.0.15, a new major version. Pin `version` on the `install` command, as in the [Quick Start](#-quick-start), so Kubescape only changes when you decide to rather than whenever the orb is upgraded.
+
+CI runs `scan_helm_chart` with Kubescape 3.0.38 and 4.0.15 on amd64, and installs and scans with both on arm64. Both versions accept the same flags and framework names. Both exit 0 when controls fail, since this orb doesn't pass a compliance or severity threshold, and exit non-zero on errors: an unknown framework, a failed policy download, or a chart with no resources the framework covers. Differences that matter when moving from 3.x to 4.x:
+
+| | Kubescape 3.x | Kubescape 4.x |
+| --- | --- | --- |
+| `output_format` | `pretty-printer`, `json`, `junit`, `prometheus`, `pdf`, `html`, `sarif`. Other values silently produce pretty-printer output. | Every format the orb accepts, adding `csv`, `markdown`, `yaml`, `gitlab-sast`, `github-actions`, `policyreport` and `exceptions`. |
+| SARIF output | Valid, but contains no results for scanned charts | Includes results |
+| `output_file` extension | Appended when missing for `json`, `junit` (`.xml`), `sarif`, `html` and `pdf` | Appended when missing for every format, e.g. `.txt` for `pretty-printer` and `prometheus` |
+| JSON report | Baseline | Same `summaryDetails` structure; adds `namespaceSummaries`, drops `jobID`, `paginationInfo` and `customerGUIDGenerated` |
+| `--verbose` with a terminal on stdin (as in CircleCI steps) | Works | Panics while printing results (exit 2). `scan_helm_chart` runs Kubescape with stdin redirected from `/dev/null`, so it is unaffected; do the same if you run `kubescape scan --verbose` in your own steps. |
+| Network access during scans | GitHub, to download policies | GitHub, plus `tuf-repo-cdn.sigstore.dev`: 4.x verifies downloaded policies with Sigstore and fails the scan if it can't |
+
+Give `output_file` the extension that matches `output_format` (see [Output Formats](#-output-formats)) so the report lands at exactly that path on either version. The `cis-eks-t1.2.0` and `cis-v1.23-t1.0.1` frameworks have been removed from Kubescape's policy library and fail on every Kubescape version, so `scan_helm_chart` no longer accepts them.
+
 ## 🧰 Commands
 
 ### `kubescape/install`
@@ -230,26 +256,11 @@ Behavior changes:
 > [!IMPORTANT]
 > **Info for security teams:** see [Network Access](#-network-access) for the hosts to allow on locked-down or self-hosted runners, and [Running Offline](#-running-offline) for scanning without network access.
 
-## 🔢 Kubescape Versions
-
-v0.4.0 of this orb changed the default Kubescape `version` from 3.0.38 to 4.0.15, a new major version. Pin `version` on the `install` command, as in the [Quick Start](#-quick-start), so Kubescape only changes when you decide to rather than whenever the orb is upgraded.
-
-CI runs `scan_helm_chart` with Kubescape 3.0.38 and 4.0.15 on amd64, and installs and scans with both on arm64. Both versions accept the same flags and framework names. Both exit 0 when controls fail, since this orb doesn't pass a compliance or severity threshold, and exit non-zero on errors: an unknown framework, a failed policy download, or a chart with no resources the framework covers. Differences that matter when moving from 3.x to 4.x:
-
-| | Kubescape 3.x | Kubescape 4.x |
-| --- | --- | --- |
-| `output_format` | `pretty-printer`, `json`, `junit`, `prometheus`, `pdf`, `html`, `sarif`. Other values silently produce pretty-printer output. | Every format the orb accepts, adding `csv`, `markdown`, `yaml`, `gitlab-sast`, `github-actions`, `policyreport` and `exceptions`. |
-| SARIF output | Valid, but contains no results for scanned charts | Includes results |
-| `output_file` extension | Appended when missing for `json`, `junit` (`.xml`), `sarif`, `html` and `pdf` | Appended when missing for every format, e.g. `.txt` for `pretty-printer` and `prometheus` |
-| JSON report | Baseline | Same `summaryDetails` structure; adds `namespaceSummaries`, drops `jobID`, `paginationInfo` and `customerGUIDGenerated` |
-| `--verbose` with a terminal on stdin (as in CircleCI steps) | Works | Panics while printing results (exit 2). `scan_helm_chart` runs Kubescape with stdin redirected from `/dev/null`, so it is unaffected; do the same if you run `kubescape scan --verbose` in your own steps. |
-| Network access during scans | GitHub, to download policies | GitHub, plus `tuf-repo-cdn.sigstore.dev`: 4.x verifies downloaded policies with Sigstore and fails the scan if it can't |
-
-Give `output_file` the extension that matches `output_format` (see [Output Formats](#-output-formats)) so the report lands at exactly that path on either version. The `cis-eks-t1.2.0` and `cis-v1.23-t1.0.1` frameworks have been removed from Kubescape's policy library and fail on every Kubescape version, so `scan_helm_chart` no longer accepts them.
-
 ## 💻 Supported Platforms
 
 Linux executors on `x86_64` (amd64) and `aarch64`/`arm64` (arm64), including CircleCI [Arm resource classes](https://circleci.com/docs/using-arm/). The `install` command picks the Kubescape release asset for the architecture reported by `uname -m` and, in the default `strict` mode, verifies it against that architecture's SHA-512 checksum. Any other operating system or architecture fails the install rather than installing a binary that can't run.
+
+`install` needs bash 4 or newer, `curl` or `wget`, `awk`, and the standard coreutils, including `mktemp` and, when it verifies, `sha512sum`. CircleCI's `cimg` and machine images have all of them.
 
 The download cache is keyed by Kubescape version, executor architecture and home directory, so amd64 and arm64 jobs never share a cached binary. On executors whose `PATH` doesn't already include `install_path` (for example, machine executors), `install` adds it for later steps through `BASH_ENV`.
 
@@ -356,7 +367,19 @@ With `artifacts_dir` set, Kubescape loads the policies from that directory and s
 This is an unofficial, community-maintained orb, and contributions are welcome! Bug reports, feature ideas and pull requests all help.
 
 - **Found a bug or have an idea?** [Open an issue](https://github.com/juburr/kubescape-orb/issues).
-- **Need a newer Kubescape release?** Generate its checksums with `src/scripts/install_hash.sh -v <version>`, paste them into the `sha512sums` table in [`src/scripts/install.sh`](src/scripts/install.sh), and open a pull request. The script checks each asset against the checksums Kubescape publishes, and needs `cosign` for releases from 4.0.13 on, whose checksum lists are signed.
+- **Need a newer Kubescape release?** Generate its checksums with `src/scripts/install_hash.sh -v <version>`, paste them into the `sha512sums` table in [`src/scripts/install.sh`](src/scripts/install.sh), and open a pull request. The script checks each asset against the checksums Kubescape publishes, and needs `cosign` for releases from 4.0.13 on, whose checksum lists are signed. It also needs bash 4 or newer, `curl`, `awk`, `sed`, `tar`, `gzip` and the standard coreutils, including `mktemp`, `sha256sum` and `sha512sum`. For a release with nothing published to check against, `-c` takes a checksum from another official source (a SHA-1 one also needs `sha1sum`), or `NONE`; it never overrides what the release did publish.
+- **Before opening a pull request**, run the checks CI runs. The tests run offline, with stand-ins for `helm` and `kubescape` where they need them. `circleci orb validate` checks the packed orb against the CircleCI API, so it needs network access.
+
+  ```bash
+  yamllint .
+  shellcheck src/scripts/*.sh tests/*.sh
+  for t in tests/*_test.sh; do bash "$t" || break; done
+  circleci orb pack src > orb.yml && circleci orb validate orb.yml
+  ```
+
+## 🎨 Logo
+
+Need the logo for a slide deck, blog post, or internal developer portal? PNGs with transparent backgrounds are in [`assets/logos`](assets/logos): [64](assets/logos/kubescape-orb-64px.png) · [128](assets/logos/kubescape-orb-128px.png) · [256](assets/logos/kubescape-orb-256px.png) · [512](assets/logos/kubescape-orb-512px.png) · [1024](assets/logos/kubescape-orb-1024px.png) px
 
 ## 📜 License
 
@@ -368,4 +391,6 @@ This is an unofficial, community-maintained orb, and contributions are welcome! 
   <img src="assets/logos/kubescape-orb-128px.png" width="64" alt="Kubescape Orb logo">
   <br>
   <sub>Find it in CI, not in production. If this orb helps your team, a ⭐ helps others find it.</sub>
+  <br>
+  <sub><a href="#kubescape-orb-for-circleci">Back to top ↑</a></sub>
 </div>
