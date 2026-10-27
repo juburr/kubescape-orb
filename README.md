@@ -2,27 +2,29 @@
 
 <img src="assets/logos/kubescape-orb-512px.png" width="256" alt="Kubescape Orb logo: a smiling Kubernetes cube holding a security shield">
 
-# Kubescape Orb for CircleCI
+# Kubescape for CircleCI and GitHub Actions
 
 ### Catch Kubernetes misconfigurations in CI, long before they reach a cluster.
 
 Install [Kubescape](https://kubescape.io) and scan your Helm charts against **NSA-CISA**, **MITRE**, **CIS**, **SOC 2** and more<br>
-with two steps of CircleCI config.<br>
+with two steps of CircleCI config, or two GitHub Actions.<br>
 Strict SHA-512 verification by default · No `sudo` · No usage data collected by the orb
 
 [![CircleCI Build Status](https://circleci.com/gh/juburr/kubescape-orb.svg?style=shield "CircleCI Build Status")](https://circleci.com/gh/juburr/kubescape-orb)
+[![GitHub Actions Status](https://github.com/juburr/kubescape-orb/actions/workflows/actions.yml/badge.svg?branch=main "GitHub Actions Status")](https://github.com/juburr/kubescape-orb/actions/workflows/actions.yml)
 [![CircleCI Orb Version](https://badges.circleci.com/orbs/juburr/kubescape-orb.svg)](https://circleci.com/developer/orbs/orb/juburr/kubescape-orb)
 [![GitHub License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 [![CircleCI Community](https://img.shields.io/badge/community-CircleCI%20Discuss-343434.svg)](https://discuss.circleci.com/c/ecosystem/orbs)
 
+![CircleCI orb and GitHub Actions](https://img.shields.io/badge/CI-CircleCI%20%7C%20GitHub%20Actions-F97316?style=for-the-badge)
 ![Kubescape 3.x and 4.x](https://img.shields.io/badge/Kubescape-3.x%20%7C%204.x-7C3AED?style=for-the-badge&logo=kubernetes&logoColor=white)
-![amd64 and arm64](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-0EA5E9?style=for-the-badge&logo=linux&logoColor=white)
+![amd64 and arm64 executors and runners](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-0EA5E9?style=for-the-badge&logo=linux&logoColor=white)
 ![SHA-512 verified by default](https://img.shields.io/badge/SHA--512-strict%20by%20default-16A34A?style=for-the-badge)
 ![No sudo required](https://img.shields.io/badge/sudo-not%20required-DB2777?style=for-the-badge)
 
-**[Quick Start](#-quick-start)** · **[Features](#-why-kubescape-orb)** · **[Frameworks](#-frameworks)** · **[Commands](#-commands)** · **[Security](#-secure-by-design)** · **[Offline Scans](#-running-offline)**
+**[Quick Start](#-quick-start)** · **[Features](#-why-kubescape-orb)** · **[Frameworks](#-frameworks)** · **[CircleCI Commands](#-circleci-commands)** · **[GitHub Actions](#-github-actions)** · **[Security](#-secure-by-design)** · **[Offline Scans](#-running-offline)**
 
-<sub>An unofficial, community-maintained orb. [Contributions are welcome!](#-contributing)</sub>
+<sub>An unofficial, community-maintained CircleCI orb and set of GitHub Actions. [Contributions are welcome!](#-contributing)</sub>
 
 </div>
 
@@ -52,7 +54,7 @@ By default, every Kubescape binary is checked against a SHA-512 table built into
 </td>
 <td width="33%" valign="top">
 🦾 <b>amd64 and arm64</b><br><br>
-Picks the right Kubescape build for x86_64 executors and CircleCI Arm resource classes, cached per version and architecture.
+Picks the right Kubescape build for x86_64 executors, CircleCI Arm resource classes and GitHub's arm64 runners, cached per version and architecture.
 </td>
 <td width="33%" valign="top">
 📡 <b>Air-gap friendly</b><br><br>
@@ -96,13 +98,13 @@ flowchart LR
 
 ## 🚀 Quick Start
 
-Add the orb, install Kubescape, scan your chart. Copy this into `.circleci/config.yml`:
+Install Kubescape, then scan your chart. On CircleCI, add the orb to `.circleci/config.yml`:
 
 ```yaml
 version: 2.1
 
 orbs:
-  kubescape: juburr/kubescape-orb@1.0.0
+  kubescape: juburr/kubescape-orb@1.1.0
 
 jobs:
   helm_scan:
@@ -128,7 +130,37 @@ workflows:
       - helm_scan
 ```
 
-Swap in your chart, push, and the report shows up under the job's **Artifacts** tab. `chart` takes anything `helm template` does: a chart directory, a packaged `.tgz`, a `repo/chart` reference or an `oci://` URL. Building the chart in an earlier job instead? Save it with `persist_to_workspace` and `attach_workspace` before the scan, as the [offline example](#-running-offline) does.
+On GitHub Actions, use the `install` and `scan_helm_chart` actions in a workflow, such as `.github/workflows/helm-scan.yml`. GitHub's Ubuntu runners include Helm:
+
+```yaml
+name: Helm scan
+
+on: push
+
+jobs:
+  helm-scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: helm package charts/myservice --destination helm_charts
+      - uses: juburr/kubescape-orb/actions/install@v1.1.0
+        with:
+          version: "4.0.15"
+      - uses: juburr/kubescape-orb/actions/scan_helm_chart@v1.1.0
+        with:
+          chart: helm_charts/myservice-1.0.0.tgz
+          framework: nsa
+          output_file: myservice_nsa_scan.json
+          output_format: json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kubescape-report
+          path: myservice_nsa_scan.json
+```
+
+See [GitHub Actions](#-github-actions) for how the actions map to the orb's commands.
+
+Swap in your chart, push, and the report shows up under the job's **Artifacts** tab (on GitHub, the run's **Artifacts** section). `chart` takes anything `helm template` does: a chart directory, a packaged `.tgz`, a `repo/chart` reference or an `oci://` URL. Building the chart in an earlier job instead? Save it with `persist_to_workspace` and `attach_workspace` before the scan, as the [offline example](#-running-offline) does.
 
 > [!TIP]
 > Upgrading from `helm_scan_framework`? v1.0.0 renames it and three of its parameters. See [Upgrading](#-upgrading).
@@ -186,7 +218,7 @@ Give `output_file` the extension that matches `output_format` so the report land
 
 v0.4.0 of this orb changed the default Kubescape `version` from 3.0.38 to 4.0.15, a new major version. Pin `version` on the `install` command, as in the [Quick Start](#-quick-start), so Kubescape only changes when you decide to rather than whenever the orb is upgraded.
 
-CI runs `scan_helm_chart` with Kubescape 3.0.38 and 4.0.15 on amd64, and installs and scans with both on arm64. Both versions accept the same flags and framework names. Both exit 0 when controls fail, since this orb doesn't pass a compliance or severity threshold, and exit non-zero on errors: an unknown framework, a failed policy download, or a chart with no resources the framework covers. Differences that matter when moving from 3.x to 4.x:
+CI runs `scan_helm_chart` with Kubescape 3.0.38 and 4.0.15 on amd64, and installs and scans with both on arm64, as orb commands on CircleCI and as actions on GitHub's runners. Both versions accept the same flags and framework names. Both exit 0 when controls fail, since this orb doesn't pass a compliance or severity threshold, and exit non-zero on errors: an unknown framework, a failed policy download, or a chart with no resources the framework covers. Differences that matter when moving from 3.x to 4.x:
 
 | | Kubescape 3.x | Kubescape 4.x |
 | --- | --- | --- |
@@ -199,7 +231,7 @@ CI runs `scan_helm_chart` with Kubescape 3.0.38 and 4.0.15 on amd64, and install
 
 Give `output_file` the extension that matches `output_format` (see [Output Formats](#-output-formats)) so the report lands at exactly that path on either version. The `cis-eks-t1.2.0` and `cis-v1.23-t1.0.1` frameworks have been removed from Kubescape's policy library and fail on every Kubescape version, so `scan_helm_chart` no longer accepts them.
 
-## 🧰 Commands
+## 🧰 CircleCI Commands
 
 ### `kubescape/install`
 
@@ -226,7 +258,28 @@ Renders a Helm chart with `helm template` and scans the resulting Kubernetes res
 | `verbose` | `true` | Include passed resources and controls in the report, not only failed ones (Kubescape's `--verbose`, which is off by default in Kubescape itself). It doesn't change the log level. |
 | `artifacts_dir` | *(empty)* | Directory created with `kubescape download artifacts --output <dir>`, to scan without downloading policies. See [Running Offline](#-running-offline). |
 
-Environment variables are expanded in `install`'s `version` and `install_path`, and in `scan_helm_chart`'s `chart`, `output_file`, `release_namespace` and `artifacts_dir`.
+Environment variables are expanded in `install`'s `version` and `install_path`, and in `scan_helm_chart`'s `chart`, `output_file`, `release_namespace` and `artifacts_dir`. `framework` and `output_format` are enums, so CircleCI checks their values before any step runs and they can't take a variable.
+
+## ⚡ GitHub Actions
+
+Each of the orb's commands has a GitHub Action of the same name. The actions run the same scripts as the orb, so they install, verify and scan the same way, and take the same inputs with the same defaults.
+
+| Action | Orb command | Inputs |
+| --- | --- | --- |
+| `juburr/kubescape-orb/actions/install` | [`kubescape/install`](#kubescapeinstall) | `version`, `install_path`, `verify_checksums`, `caching` |
+| `juburr/kubescape-orb/actions/scan_helm_chart` | [`kubescape/scan_helm_chart`](#kubescapescan_helm_chart) | `chart`, `output_file` (required), `framework`, `output_format`, `release_namespace`, `verbose`, `artifacts_dir` |
+
+The [Quick Start](#-quick-start) shows a complete workflow. How they differ from the orb's commands:
+
+- **Versions.** An action is referenced by the repository's release tag, such as `v1.1.0`, the same tag the orb is published from. There is no moving major tag such as `v1` yet. For the strongest pinning, use the tag's commit SHA: `juburr/kubescape-orb/actions/scan_helm_chart@<sha> # v1.1.0`.
+- **Environment variables.** The orb expands `$NAME` in its string parameters with the CircleCI CLI, which GitHub's runners don't have, so the actions take values as they are. Use GitHub's expressions instead, such as `output_file: reports/${{ github.sha }}.json`. A leading `~` in `install_path` is still the home directory.
+- **`framework`, `output_format` and `verbose`.** CircleCI checks the orb's enums and boolean before any step runs. The action's inputs are plain strings, which the scan script checks before rendering the chart: `verbose` takes `true` or `false`.
+- **Caching.** `caching` stores the verified release with [`actions/cache`](https://github.com/actions/cache), with the same key ingredients as the orb (Kubescape version, CPU architecture, home directory). The cache is restored before the install and saved right after it, and the release is verified again when restored. It counts toward the repository's GitHub Actions cache storage.
+- **`PATH`.** `install` puts `install_path` on the `PATH` of later steps through `GITHUB_PATH`.
+- **Reports.** As with the orb, the report stays where `output_file` puts it. Keep it with [`actions/upload-artifact`](https://github.com/actions/upload-artifact), or upload a `sarif` report to GitHub code scanning.
+- **Runners.** GitHub-hosted Ubuntu runners include Helm. CI installs and scans with Kubescape 3.0.38 and 4.0.15 on `ubuntu-24.04` and `ubuntu-24.04-arm`, with every output format on amd64, and scans offline with `artifacts_dir`.
+
+The actions are composite actions in [`actions/`](actions), next to the orb's source. Each passes its inputs to the orb's script as environment variables, and [`actions/run_script.sh`](actions/run_script.sh) gives the script what CircleCI would: a `BASH_ENV` file for the values it hands to later steps, which it then passes on through `GITHUB_PATH` and `GITHUB_ENV`.
 
 ## 📦 Upgrading
 
@@ -250,7 +303,7 @@ Behavior changes:
 - **Least Privilege**: Installs to a user-owned directory by default, with no `sudo` usage anywhere in this orb.
 - **Integrity**: SHA-512 checksum validation of downloaded binaries, on by default and failing closed: a Kubescape version this orb has no checksum for is refused, not installed unverified, and a binary that can't run on the executor never replaces an existing install. See [Checksum Verification](#-checksum-verification) for the `known_versions` and `false` opt-outs.
 - **Provenance**: Installs directly from Kubescape's official [releases page](https://github.com/kubescape/kubescape/releases/) on GitHub. No third-party websites, domains, or proxies are used.
-- **Confidentiality**: All secrets and environment variables are handled in accordance with CircleCI's [security recommendations](https://circleci.com/docs/security-recommendations/) and [best practices](https://circleci.com/docs/orbs-best-practices/).
+- **Confidentiality**: All secrets and environment variables are handled in accordance with CircleCI's [security recommendations](https://circleci.com/docs/security-recommendations/) and [best practices](https://circleci.com/docs/orbs-best-practices/). The GitHub Actions pass inputs to the scripts as environment variables, never pasting them into a script, and pin the actions they use (`actions/cache`) to a commit SHA.
 - **Privacy**: No usage data of any kind is collected or shipped back to the orb developer. Kubescape itself is a separate matter: its update check sends details such as its version, the framework being scanned and the scan context to `version-check.ks-services.co` unless `KS_SKIP_UPDATE_CHECK` is `"true"` or `artifacts_dir` is set, and Kubescape 4.x exports OpenTelemetry traces and metrics when the job sets `OTEL_EXPORTER_OTLP_ENDPOINT`. See [Network Access](#-network-access).
 
 > [!IMPORTANT]
@@ -263,6 +316,8 @@ Linux executors on `x86_64` (amd64) and `aarch64`/`arm64` (arm64), including Cir
 `install` needs bash 4 or newer, `curl` or `wget`, `awk`, and the standard coreutils, including `mktemp` and, when it verifies, `sha512sum`. CircleCI's `cimg` and machine images have all of them.
 
 The download cache is keyed by Kubescape version, executor architecture and home directory, so amd64 and arm64 jobs never share a cached binary. On executors whose `PATH` doesn't already include `install_path` (for example, machine executors), `install` adds it for later steps through `BASH_ENV`.
+
+The [GitHub Actions](#-github-actions) run on GitHub-hosted `ubuntu-24.04` (amd64) and `ubuntu-24.04-arm` (arm64) runners, which CI covers, and on self-hosted Linux runners with the same tools and Helm.
 
 ## 🔐 Checksum Verification
 
@@ -294,10 +349,12 @@ Optional hosts. Kubescape carries on without them:
 
 | Host | Used for | Notes |
 | --- | --- | --- |
-| `version-check.ks-services.co` | Kubescape's update check, on every scan | Set `KS_SKIP_UPDATE_CHECK: "true"` in the job's `environment` to turn it off. Where egress is silently dropped rather than rejected, it adds about a minute to each scan. |
+| `version-check.ks-services.co` | Kubescape's update check, on every scan | Set `KS_SKIP_UPDATE_CHECK: "true"` in the job's `environment` (on GitHub, its `env`) to turn it off. Where egress is silently dropped rather than rejected, it adds about a minute to each scan. |
 | Registries of the chart's container images (e.g. `index.docker.io`, `auth.docker.io`) | Image signature controls in the `all`, `allcontrols` and `armobest` frameworks | Other frameworks don't contact registries |
 
 `scan_helm_chart` renders the chart with `helm template`, which needs no network access for a chart directory or `.tgz` file. A `repo/chart` or `oci://` chart is downloaded from its chart repository or registry, so allow that host too. The orb doesn't install Helm, so `get.helm.sh` isn't needed unless you install Helm yourself.
+
+With `caching`, the GitHub `install` action also reaches GitHub's cache service through `actions/cache`. GitHub-hosted runners always can; a self-hosted runner needs the hosts GitHub lists for [communication with GitHub](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#communication-between-self-hosted-runners-and-github).
 
 ## 📡 Running Offline
 
@@ -358,7 +415,7 @@ workflows:
             - download_kubescape_artifacts
 ```
 
-With `artifacts_dir` set, Kubescape loads the policies from that directory and skips its update check, so scanning a chart directory or `.tgz` file opens no network connections. The exception is `all`, `allcontrols` and `armobest`, whose image signature controls still try to reach container registries and carry on when they can't. Download the artifacts with the same Kubescape version that scans, and refresh them regularly, since stale artifacts mean stale controls. You can also commit the directory to your repository instead of using a workspace.
+With `artifacts_dir` set, Kubescape loads the policies from that directory and skips its update check, so scanning a chart directory or `.tgz` file opens no network connections. The exception is `all`, `allcontrols` and `armobest`, whose image signature controls still try to reach container registries and carry on when they can't. Download the artifacts with the same Kubescape version that scans, and refresh them regularly, since stale artifacts mean stale controls. You can also commit the directory to your repository instead of using a workspace. On GitHub Actions, pass it between jobs with `actions/upload-artifact` and `actions/download-artifact`, and give the `scan_helm_chart` action the same `artifacts_dir` input.
 
 `install` itself downloads Kubescape from GitHub. On a runner with no route to GitHub at all, bake Kubescape into the executor image instead, after checking its SHA-512 against the table in [`src/scripts/install.sh`](src/scripts/install.sh), and skip `install`.
 
@@ -368,7 +425,7 @@ This is an unofficial, community-maintained orb, and contributions are welcome! 
 
 - **Found a bug or have an idea?** [Open an issue](https://github.com/juburr/kubescape-orb/issues).
 - **Need a newer Kubescape release?** Generate its checksums with `src/scripts/install_hash.sh -v <version>`, paste them into the `sha512sums` table in [`src/scripts/install.sh`](src/scripts/install.sh), and open a pull request. The script checks each asset against the checksums Kubescape publishes, and needs `cosign` for releases from 4.0.13 on, whose checksum lists are signed. It also needs bash 4 or newer, `curl`, `awk`, `sed`, `tar`, `gzip` and the standard coreutils, including `mktemp`, `sha256sum` and `sha512sum`. For a release with nothing published to check against, `-c` takes a checksum from another official source (a SHA-1 one also needs `sha1sum`), or `NONE`; it never overrides what the release did publish.
-- **Before opening a pull request**, run the checks CI runs. The tests run offline, with stand-ins for `helm` and `kubescape` where they need them. `circleci orb validate` checks the packed orb against the CircleCI API, so it needs network access.
+- **Before opening a pull request**, run the checks CI runs. The tests run offline, with stand-ins for `helm` and `kubescape` where they need them. `circleci orb validate` checks the packed orb against the CircleCI API, so it needs network access. CI also runs the orb's commands on CircleCI and the actions on GitHub's runners. A change to a command's parameters needs the same change to its action in `actions/`, which `tests/actions_test.sh` checks.
 
   ```bash
   yamllint .

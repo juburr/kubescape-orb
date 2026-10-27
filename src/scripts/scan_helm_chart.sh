@@ -2,14 +2,53 @@
 
 set -euo pipefail
 
+# subst VALUE: expands environment variables in VALUE with the CircleCI CLI,
+# which reads it on stdin. Without the CLI, as in GitHub Actions or a local
+# run, the value is used as it is.
+subst() {
+    if command -v circleci > /dev/null 2>&1; then
+        printf '%s' "$1" | circleci env subst
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
 # Prepare orb parameters
-ARTIFACTS_DIR=$(printf '%s' "${PARAM_ARTIFACTS_DIR}" | circleci env subst)
-CHART=$(printf '%s' "${PARAM_CHART}" | circleci env subst)
+ARTIFACTS_DIR=$(subst "${PARAM_ARTIFACTS_DIR}")
+CHART=$(subst "${PARAM_CHART}")
 FRAMEWORK="${PARAM_FRAMEWORK}"
-OUTPUT_FILE=$(printf '%s' "${PARAM_OUTPUT_FILE}" | circleci env subst)
+OUTPUT_FILE=$(subst "${PARAM_OUTPUT_FILE}")
 OUTPUT_FORMAT="${PARAM_OUTPUT_FORMAT}"
-RELEASE_NAMESPACE=$(printf '%s' "${PARAM_RELEASE_NAMESPACE}" | circleci env subst)
-VERBOSE=$(printf '%s' "${PARAM_VERBOSE}" | circleci env subst)
+RELEASE_NAMESPACE=$(subst "${PARAM_RELEASE_NAMESPACE}")
+VERBOSE=$(subst "${PARAM_VERBOSE}")
+
+# CircleCI checks the command's enums and boolean before the step runs, and
+# passes a boolean as 1 or 0; the GitHub Action passes any string, and true
+# or false.
+case "${FRAMEWORK}" in
+    all | allcontrols | agentruntimehardening | armobest | devopsbest | mitre | nsa | security | soc2) ;;
+    cis-aks-t1.2.0 | cis-aks-t1.8.0 | cis-eks-t1.7.0 | cis-eks-t1.8.0 | cis-gke-v1.9.0 | cis-v1.10.0 | cis-v1.12.0) ;;
+    *)
+        echo "ERROR: framework '${FRAMEWORK}' is not one of the frameworks the orb supports (see the scan_helm_chart command's framework parameter)." >&2
+        exit 1
+        ;;
+esac
+case "${OUTPUT_FORMAT}" in
+    pretty-printer | json | junit | prometheus | pdf | html | sarif | gitlab-sast | github-actions) ;;
+    yaml | csv | markdown | policyreport | exceptions) ;;
+    *)
+        echo "ERROR: output_format '${OUTPUT_FORMAT}' is not one of the formats the orb supports (see the scan_helm_chart command's output_format parameter)." >&2
+        exit 1
+        ;;
+esac
+case "${VERBOSE}" in
+    1 | true) VERBOSE=1 ;;
+    0 | false) VERBOSE=0 ;;
+    *)
+        echo "ERROR: verbose must be true or false, not '${VERBOSE}'." >&2
+        exit 1
+        ;;
+esac
 
 # The chart is rendered into a private temporary directory, which is removed on
 # every exit, including a failed scan: the rendered manifests can hold Secret

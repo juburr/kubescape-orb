@@ -1,0 +1,81 @@
+name: Scan a Helm chart with Kubescape
+description: >
+  Renders a Helm chart with helm template and scans the resulting Kubernetes
+  resources against one Kubescape framework's security controls. Requires
+  Helm on the PATH (GitHub's Ubuntu runners include it) and Kubescape from
+  the install action. The GitHub Actions twin of the orb's scan_helm_chart
+  command.
+author: juburr
+
+inputs:
+  artifacts_dir:
+    description: >
+      Directory of Kubescape artifacts created with `kubescape download
+      artifacts --output <dir>`. When set, frameworks, control inputs,
+      exceptions and attack tracks are loaded from it (--use-artifacts-from)
+      instead of being downloaded, and Kubescape's update check is skipped, so
+      the scan needs no network access. Leave empty to download them at scan
+      time.
+    default: ""
+  chart:
+    description: >
+      Helm chart to scan: anything `helm template` accepts, such as a chart
+      directory, a packaged chart (.tgz file), a repo/chart reference to a
+      repository added with `helm repo add`, or an oci:// URL.
+    required: true
+  framework:
+    description: >
+      Framework to scan the chart with: all, allcontrols,
+      agentruntimehardening, armobest, devopsbest, mitre, nsa, security,
+      soc2, cis-aks-t1.2.0, cis-aks-t1.8.0, cis-eks-t1.7.0, cis-eks-t1.8.0,
+      cis-gke-v1.9.0, cis-v1.10.0 or cis-v1.12.0. Names match `kubescape list
+      frameworks`, plus "all" and "security". "agentruntimehardening" only
+      covers Agent Sandbox resources; for charts without them Kubescape exits
+      non-zero with "no resources found to scan".
+    default: all
+  output_file:
+    description: >
+      Path to the output file. Kubescape appends the format's extension when
+      the name doesn't already end with it (Kubescape 4.x does this for every
+      format), so use the matching extension to get the exact path: .json
+      (json, gitlab-sast), .xml (junit), .sarif, .html, .pdf, .txt
+      (pretty-printer, prometheus, github-actions), .csv, .md (markdown),
+      .yaml (yaml, policyreport), .exceptions.json (exceptions).
+    required: true
+  output_format:
+    description: >
+      Format to use for the output file: pretty-printer, json, junit,
+      prometheus, pdf, html, sarif, gitlab-sast, github-actions, yaml, csv,
+      markdown, policyreport or exceptions. Matches kubescape --format for
+      posture scans. Kubescape 3.x only supports pretty-printer, json, junit,
+      prometheus, pdf, html and sarif; for the other formats it silently
+      writes pretty-printer output.
+    default: json
+  release_namespace:
+    description: >
+      Namespace passed to `helm template` (--namespace), which only sets
+      .Release.Namespace while the chart is rendered. Nothing is deployed.
+    default: kubescape-orb
+  verbose:
+    description: >
+      Include passed resources and controls in the report, not only failed
+      ones (Kubescape's --verbose). It does not change Kubescape's log level.
+      Kubescape 4.x writes passed resources to JSON reports either way.
+      Defaults to true, unlike Kubescape itself, which reports only failures
+      unless --verbose is given.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Scan Helm chart
+      shell: bash
+      env:
+        PARAM_ARTIFACTS_DIR: ${{ inputs.artifacts_dir }}
+        PARAM_CHART: ${{ inputs.chart }}
+        PARAM_FRAMEWORK: ${{ inputs.framework }}
+        PARAM_OUTPUT_FILE: ${{ inputs.output_file }}
+        PARAM_OUTPUT_FORMAT: ${{ inputs.output_format }}
+        PARAM_RELEASE_NAMESPACE: ${{ inputs.release_namespace }}
+        PARAM_VERBOSE: ${{ inputs.verbose }}
+      run: bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/scan_helm_chart.sh"
