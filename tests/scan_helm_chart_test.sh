@@ -40,7 +40,14 @@ mkdir -p "${WORK}/bin" "${WORK}/cli" "${WORK}/home" "${WORK}/tmp" "${WORK}/resul
 # is in a directory of its own, which run_scan leaves off the PATH with
 # PATH="${NO_CLI_PATH}".
 printf '#!/bin/sh\ncat\n' > "${WORK}/cli/circleci"
-NO_CLI_PATH="${WORK}/bin:/usr/bin:/bin"
+# A PATH with no circleci on it, as on GitHub's runners. CircleCI's own
+# executors have the real CLI in /bin, so NO_CLI_PATH holds links to just the
+# tools the script and the stand-ins run, not /usr/bin or /bin.
+mkdir -p "${WORK}/nocli"
+for tool in bash cat cp ls mktemp rm; do
+    ln -s "$(command -v "${tool}")" "${WORK}/nocli/${tool}"
+done
+NO_CLI_PATH="${WORK}/bin:${WORK}/nocli"
 
 # helm template prints a manifest with a Secret, as a chart's values can.
 cat > "${WORK}/bin/helm" << 'EOF'
@@ -194,6 +201,8 @@ check "succeeds when kubescape writes no file" rc_is_zero
 check "warns on stderr that no file was found" stderr_has "WARN: no ${WORK}/results/nsa.json.* files either."
 
 # GitHub Actions: no CircleCI CLI, and booleans as true and false.
+STDOUT="" STDERR="circleci on NO_CLI_PATH: $(PATH="${NO_CLI_PATH}" command -v circleci)"
+check "the PATH for these runs has no circleci on it" test -z "$(PATH="${NO_CLI_PATH}" command -v circleci)"
 # shellcheck disable=SC2016 # a literal $NAME, which only the CLI would expand
 run_scan PATH="${NO_CLI_PATH}" PARAM_VERBOSE="true" PARAM_RELEASE_NAMESPACE='-n$NAME'
 check "scans without the CircleCI CLI" rc_is_zero
