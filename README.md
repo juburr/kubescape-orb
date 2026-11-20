@@ -104,7 +104,7 @@ Install Kubescape, then scan your chart. On CircleCI, add the orb to `.circleci/
 version: 2.1
 
 orbs:
-  kubescape: juburr/kubescape-orb@1.1.1
+  kubescape: juburr/kubescape-orb@1.1.2
 
 jobs:
   helm_scan:
@@ -143,10 +143,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: helm package charts/myservice --destination helm_charts
-      - uses: juburr/kubescape-orb/actions/install@v1.1.1
+      - uses: juburr/kubescape-orb/actions/install@v1.1.2
         with:
           version: "4.0.15"
-      - uses: juburr/kubescape-orb/actions/scan_helm_chart@v1.1.1
+      - uses: juburr/kubescape-orb/actions/scan_helm_chart@v1.1.2
         with:
           chart: helm_charts/myservice-1.0.0.tgz
           framework: nsa
@@ -271,7 +271,7 @@ Each of the orb's commands has a GitHub Action of the same name. The actions run
 
 The [Quick Start](#-quick-start) shows a complete workflow. How they differ from the orb's commands:
 
-- **Versions.** An action is referenced by the repository's release tag, such as `v1.1.1`, the same tag the orb is published from. There is no moving major tag such as `v1` yet. For the strongest pinning, use the tag's commit SHA: `juburr/kubescape-orb/actions/scan_helm_chart@<sha> # v1.1.1`.
+- **Versions.** An action is referenced by the repository's release tag, such as `v1.1.2`, the same tag the orb is published from. There is no moving major tag such as `v1` yet. For the strongest pinning, use the tag's commit SHA: `juburr/kubescape-orb/actions/scan_helm_chart@<sha> # v1.1.1`.
 - **Environment variables.** The orb expands `$NAME` in its string parameters with the CircleCI CLI, which GitHub's runners don't have, so the actions take values as they are. Use GitHub's expressions instead, such as `output_file: reports/${{ github.sha }}.json`. A leading `~` in `install_path` is still the home directory.
 - **`framework`, `output_format` and `verbose`.** CircleCI checks the orb's enums and boolean before any step runs. The action's inputs are plain strings, which the scan script checks before rendering the chart: `verbose` takes `true` or `false`.
 - **Caching.** `caching` stores the verified release with [`actions/cache`](https://github.com/actions/cache), with the same key ingredients as the orb (Kubescape version, CPU architecture, home directory). The cache is restored before the install and saved right after it, and the release is verified again when restored. It counts toward the repository's GitHub Actions cache storage.
